@@ -1,0 +1,113 @@
+---
+name: wechat-oa
+description: 微信公众号草稿箱管理工具集。支持草稿创建/更新/删除/列表查询、自动封面图生成、HTML行内样式转换。基于官方微信 API，无需第三方依赖。 / WeChat Official Account draft management toolkit. Supports draft CRUD, auto cover generation, and HTML inline-style conversion via official WeChat APIs.
+version: "1.0.2"
+homepage: https://github.com/woody-life/wechat-oa
+metadata:
+  openclaw:
+    emoji: "📝"
+    category: "publishing"
+    requires:
+      bins: ["python3"]
+---
+
+# wechat-oa
+
+微信公众号草稿箱管理工具集。基于官方微信 API，无需第三方依赖。
+
+WeChat Official Account draft management toolkit. Built on official WeChat APIs, no third-party dependencies required.
+
+## 特性 / Features
+
+- **行内样式转换** / Inline-style conversion：自动将 HTML 中的 `<style>` 标签转换为行内 `style=""` 属性，兼容微信文章渲染（已固化到 skill） / Auto-converts `<style>` tags into inline `style=""` attributes for WeChat-compatible rendering (baked into this skill)
+- **自动封面生成** / Auto cover generation：根据文章标题 AI 生成科技风封面图（2.35:1 比例） / AI-generated tech-style cover image from article title (2.35:1 ratio)
+- **智能摘要** / Smart digest：自动从正文中选取含功能关键词的段落作为摘要，而非机械截取前80字 / Intelligently selects keyword-rich paragraphs as digest instead of blindly truncating at 80 chars
+
+## 功能与对应API / Commands & APIs
+
+| 命令 Command | 说明 Description | 底层API Underlying API |
+|------|------|---------|
+| `list` | 查看草稿列表 / View draft list | `draft/batchget` |
+| `create <html>` | 创建新草稿（自动生成封面）/ Create new draft (auto-generate cover) | `draft/add` + 永久素材上传 Permanent material upload |
+| `update <media_id> <html>` | 更新已有草稿 / Update existing draft | `draft/update` |
+| `update <media_id> <html> --force-cover` | 更新草稿并强制重新生成封面 / Update draft + force-regenerate cover | `draft/update` |
+| `delete <media_id>` | 删除草稿 / Delete draft | `draft/delete` |
+| `upload <图片文件>` | 上传图片到永久素材库 / Upload image to permanent material | `material/add_material` |
+| `cover <标题>` | 生成封面图预览（不推送）/ Generate cover preview (no push) | PIL local generation |
+
+## 初始化配置 / Initial Setup
+
+使用前必须完成以下配置：Complete the following before first use:
+
+### 1. 获取 AppID 和 AppSecret / Get AppID & AppSecret
+
+(1) 登录 [微信公众平台](https://mp.weixin.qq.com) / Log in to [WeChat Official Account Platform](https://mp.weixin.qq.com)
+(2) 进入 **设置与开发 → 基本设置** / Go to **Settings & Development → Basic Settings**
+(3) 复制 **公众号 AppID** 和 **公众号 AppSecret**（如未设置需先启用）/ Copy **AppID** and **AppSecret** (enable if not set yet)
+
+### 2. 添加 IP 白名单 / Add IP Whitelist
+
+调用微信 API 前，必须将服务器 IP 加入白名单：You must add your server's public IP to the whitelist before calling WeChat APIs:
+
+(1) 进入 **设置与开发 → 安全中心** / Go to **Settings & Development → Security Center**
+(2) 点击 **IP 白名单** / Click **IP Whitelist**
+(3) 添加你的服务器公网 IP（查看当前 IP：`curl ifconfig.me`）/ Add your server's public IP (check: `curl ifconfig.me`)
+
+> ⚠️ **不添加 IP 白名单会导致 API 调用失败！** / Not adding the IP whitelist will cause all API calls to fail!
+
+### 3. 配置凭证 / Configure Credentials
+
+将 `config.example.json` 复制为 `config.json`，填入你的凭证：Copy `config.example.json` to `config.json` and fill in your credentials:
+
+```bash
+cp config.example.json config.json
+# 然后编辑 config.json，填入 APP_ID 和 APP_SECRET
+# Then edit config.json, fill in APP_ID and APP_SECRET
+```
+
+`config.json` 示例 / Example:
+```json
+{
+  "APP_ID": "wx0000000000000000",
+  "APP_SECRET": "00000000000000000000000000000000",
+  "author": "龙虾"  // 文章默认作者 / Default article author
+}
+```
+
+> ⚠️ `config.json` 包含凭证，**不要提交到 GitHub**！已在 `.gitignore` 中忽略。 / `config.json` contains credentials — **do NOT commit to GitHub**! Already in `.gitignore`.
+
+## 使用示例 / Usage Examples
+
+```bash
+# 查看草稿列表 / View draft list
+python wechat_push.py list
+
+# 创建新草稿（自动生成封面）/ Create new draft (auto-generate cover)
+python wechat_push.py create article.html
+
+# 更新已有草稿 / Update existing draft
+python wechat_push.py update n2BZd2CzoCKkl... article.html
+
+# 更新草稿 + 强制重绘封面 / Update draft + force regenerate cover
+python wechat_push.py update n2BZd2CzoCKkl... article.html --force-cover
+
+# 删除草稿 / Delete draft
+python wechat_push.py delete n2BZd2CzoCKkl...
+
+# 上传图片到永久素材 / Upload image to permanent material
+python wechat_push.py upload cover.png
+
+# 生成封面图预览（不推送到微信）/ Generate cover preview (no WeChat push)
+python wechat_push.py cover "你的文章标题"
+```
+
+## 依赖 / Dependencies
+
+```bash
+pip install requests Pillow
+```
+
+## 输出文件 / Output Files
+
+- `draft_ids.txt` - 草稿记录（创建时间、标题、media_id）/ Draft log (timestamp, title, media_id)
+- 封面图默认保存在 HTML 文件同目录 / Cover images saved in the same directory as the HTML file by default
