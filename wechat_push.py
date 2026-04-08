@@ -311,13 +311,16 @@ def generate_cover_and_upload(access_token, title, html_path):
     """
     生成封面图并上传，返回 thumb_media_id。
 
-    封面图保存到 skill 目录（而非 HTML 所在目录），
-    避免 Windows 中文路径导致 PIL img.save() 失败。
+    封面图统一保存到 skill 目录下的 TMP/ 子目录（已加入 .gitignore），
+    避免中文路径问题，不污染 Git。
     如果封面图生成失败，返回空字符串；草稿仍可创建（需手动补封面）。
     """
-    # 固定保存到 skill 目录，文件名不含中文，避免路径编码问题
     skill_dir = Path(__file__).parent
-    cover_path = skill_dir / "cover_latest.png"
+    tmp_dir = skill_dir / "TMP"
+    tmp_dir.mkdir(exist_ok=True)
+    # 文件名不含中文，避免路径编码问题
+    safe_name = re.sub(r'[^\w\u4e00-\u9fff]', '_', title)[:20]
+    cover_path = tmp_dir / f"cover_{safe_name}.png"
 
     print(f"[COVER] 正在生成封面图...")
     cover_ok = False
