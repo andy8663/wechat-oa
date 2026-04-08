@@ -78,15 +78,15 @@ API_USER_INFO = "https://api.weixin.qq.com/cgi-bin/user/info"
 API_USER_LIST = "https://api.weixin.qq.com/cgi-bin/user/get"
 
 
-def hex_to_rgb(hex_color):
-    """十六进制颜色转RGB元组"""
+def hex_to_rgb(hex_color: str):
+    """将 #RRGGBB 格式的颜色转为 (R, G, B)"""
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 
 def generate_cover(title: str, output_path: str) -> str:
     """
-    根据文章标题生成封面图
+    根据文章标题生成科技风封面图
     比例: 2.35:1 (900x383)
     """
     if not HAS_PIL:
@@ -95,47 +95,133 @@ def generate_cover(title: str, output_path: str) -> str:
     WIDTH = 900
     HEIGHT = 383
 
-    # 创建图片
-    img = Image.new('RGB', (WIDTH, HEIGHT), hex_to_rgb('#1a1a2e'))
+    # 深色科技背景
+    img = Image.new('RGB', (WIDTH, HEIGHT), (5, 9, 28))
     draw = ImageDraw.Draw(img)
 
-    # 渐变背景
+    # ---------- 1. 渐变底层（从上到下：深蓝→纯黑） ----------
     for y in range(HEIGHT):
         ratio = y / HEIGHT
-        r1, g1, b1 = hex_to_rgb('#1a1a2e')
-        r2, g2, b2 = hex_to_rgb('#16213e')
-        r = int(r1 + (r2 - r1) * ratio)
-        g = int(g1 + (g2 - g1) * ratio)
-        b = int(b1 + (b2 - b1) * ratio)
+        r = int(5 + (0 - 5) * ratio)
+        g = int(9 + (0 - 9) * ratio)
+        b = int(28 + (0 - 28) * ratio)
         draw.line([(0, y), (WIDTH, y)], fill=(r, g, b))
 
-    # 加载字体
+    # ---------- 2. 细网格线（横向 + 纵向） ----------
+    grid_color = (20, 40, 80)
+    # 横线每15px一条
+    for y in range(0, HEIGHT, 15):
+        draw.line([(0, y), (WIDTH, y)], fill=grid_color)
+    # 竖线每20px一条
+    for x in range(0, WIDTH, 20):
+        draw.line([(x, 0), (x, HEIGHT)], fill=grid_color)
+
+    # ---------- 3. 底部数据流色带 ----------
+    draw.rectangle([(0, 0), (WIDTH, 4)], fill=(0, 200, 255))   # 顶部霓虹蓝线
+    draw.rectangle([(0, 0), (4, HEIGHT)], fill=(0, 180, 240))  # 左侧霓虹蓝线
+    draw.rectangle([(WIDTH-4, 0), (WIDTH, HEIGHT)], fill=(0, 80, 160))  # 右侧暗蓝线
+
+    # ---------- 4. 底部科技装饰条 ----------
+    draw.rectangle([(0, HEIGHT-60), (WIDTH, HEIGHT)], fill=(0, 8, 25))
+    # 底部内嵌线
+    draw.line([(0, HEIGHT-60), (WIDTH, HEIGHT-60)], fill=(0, 140, 220))
+
+    # ---------- 5. 左侧竖向标签 ----------
+    # 画一个带透明度的侧边标签区
+    for x in range(0, 8):
+        alpha_ratio = 1 - x / 8
+        r, g, b = 0, 180, 255
+        draw.line([(x, 0), (x, HEIGHT)], fill=(int(r*alpha_ratio), int(g*alpha_ratio), int(b*alpha_ratio)))
+
+    # ---------- 6. 二进制/十六进制数字装饰（左上/右下角） ----------
     try:
-        font_title = ImageFont.truetype('C:/Windows/Fonts/msyhbd.ttc', 34)
-        font_subtitle = ImageFont.truetype('C:/Windows/Fonts/msyh.ttc', 18)
-        font_small = ImageFont.truetype('C:/Windows/Fonts/msyh.ttc', 11)
+        font_hex = ImageFont.truetype('C:/Windows/Fonts/consola.ttf', 9)
     except:
+        font_hex = ImageFont.load_default()
+
+    hex_nums = ['0x00FF', '0xA3', '0x7E', '0x1B', '0xF0', '0x3C',
+                '10110', '00101', '11100', '01010', '11001', '00111']
+    # 左上角
+    for i, hx in enumerate(hex_nums[:6]):
+        x = 14 + (i % 2) * 48
+        y = 14 + (i // 2) * 13
+        draw.text((x, y), hx, fill=(0, 90, 160), font=font_hex)
+    # 右下角
+    for i, hx in enumerate(hex_nums[6:]):
+        x = WIDTH - 46 + (i % 2) * 42
+        y = HEIGHT - 48 + (i // 2) * 12
+        draw.text((x, y), hx, fill=(0, 70, 130), font=font_hex)
+
+    # ---------- 7. 电路连线装饰（半透明线条从左到右） ----------
+    circuit_pts = [
+        ((8, 70), (60, 90)), ((60, 90), (120, 65)), ((120, 65), (180, 95)),
+        ((180, 95), (230, 75)), ((230, 75), (280, 100)),
+    ]
+    for (x1, y1), (x2, y2) in circuit_pts:
+        draw.line([(x1, y1), (x2, y2)], fill=(0, 110, 200), width=1)
+        draw.ellipse([(x1-2, y1-2), (x1+2, y1+2)], fill=(0, 180, 255))  # 节点圆点
+
+    circuit_pts2 = [
+        ((WIDTH-8, 280), (WIDTH-70, 300)), ((WIDTH-70, 300), (WIDTH-140, 270)),
+        ((WIDTH-140, 270), (WIDTH-200, 295)),
+    ]
+    for (x1, y1), (x2, y2) in circuit_pts2:
+        draw.line([(x1, y1), (x2, y2)], fill=(0, 90, 180), width=1)
+        draw.ellipse([(x1-2, y1-2), (x1+2, y1+2)], fill=(0, 150, 230))
+
+    # ---------- 8. 中心主文字区域（带发光效果） ----------
+    try:
+        font_title = ImageFont.truetype('C:/Windows/Fonts/msyhbd.ttc', 32)
+        font_subtitle = ImageFont.truetype('C:/Windows/Fonts/msyh.ttc', 16)
+        font_label = ImageFont.truetype('C:/Windows/Fonts/arial.ttf', 11)
+    except Exception:
         font_title = ImageFont.load_default()
         font_subtitle = font_title
-        font_small = font_title
+        font_label = font_title
 
-    # 主标题（截断显示）
+    # 标题处理（最多28字显示）
     display_title = title
-    if len(display_title) > 18:
-        display_title = display_title[:18] + "..."
+    if len(display_title) > 28:
+        display_title = display_title[:28] + '...'
 
-    draw.text((WIDTH//2, 55), display_title, fill=hex_to_rgb('#ffffff'), font=font_title, anchor='mm')
+    # 文字区域背景（半透明矩形）
+    draw.rectangle([(80, 120), (WIDTH-80, HEIGHT-70)], fill=(5, 9, 28))
+    draw.rectangle([(80, 120), (WIDTH-80, 122)], fill=(0, 190, 255))  # 顶边亮线
+    draw.rectangle([(80, HEIGHT-70), (WIDTH-80, HEIGHT-68)], fill=(0, 100, 200))  # 底边暗线
 
-    # 副标题
-    draw.text((WIDTH//2, 98), 'AI Agent Skill', fill=hex_to_rgb('#909090'), font=font_subtitle, anchor='mm')
+    # 主标题（白色）
+    draw.text((WIDTH//2, 158), display_title, fill=(255, 255, 255), font=font_title, anchor='mm')
 
-    # 装饰元素
-    draw.rectangle([(0, HEIGHT-40), (WIDTH, HEIGHT)], fill='#0a0a1a')
-    draw.text((WIDTH//2, HEIGHT-20), 'OpenClaw', fill=hex_to_rgb('#505050'), font=font_small, anchor='mm')
-    draw.rectangle([(0, 0), (WIDTH, 3)], fill=hex_to_rgb('#1a73e8'))
+    # 分隔线
+    draw.line([(WIDTH//2-80, 195), (WIDTH//2+80, 195)], fill=(0, 170, 240), width=1)
 
-    # 确保目录存在
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # 副标题（青色）
+    draw.text((WIDTH//2, 215), 'A I   A g e n t   S k i l l', fill=(0, 210, 255), font=font_subtitle, anchor='mm')
+
+    # 底部标签
+    draw.text((WIDTH//2, HEIGHT-30), '[  OpenClaw · AI Agent  ]', fill=(0, 120, 200), font=font_label, anchor='mm')
+
+    # ---------- 9. 右上角装饰：信号强度图标 ----------
+    bars = [(WIDTH-30, 20), (WIDTH-40, 25), (WIDTH-50, 30), (WIDTH-60, 35)]
+    heights = [6, 12, 18, 24]
+    for i, (bx, _) in enumerate(bars):
+        draw.rectangle([(bx, 38 - heights[i]), (bx+7, 38)], fill=(0, 160+i*15, 255))
+
+    # ---------- 10. 左下角装饰：处理器芯片图标 ----------
+    chip_x, chip_y = 20, HEIGHT - 50
+    draw.rectangle([(chip_x, chip_y), (chip_x+28, chip_y+28)], fill=(0, 20, 60), outline=(0, 140, 255), width=1)
+    draw.rectangle([(chip_x+10, chip_y+10), (chip_x+18, chip_y+18)], fill=(0, 60, 140))
+    # 引脚
+    for i in range(5):
+        draw.line([(chip_x-5, chip_y+2+i*6), (chip_x, chip_y+2+i*6)], fill=(0, 120, 220), width=1)
+        draw.line([(chip_x+28, chip_y+2+i*6), (chip_x+33, chip_y+2+i*6)], fill=(0, 120, 220), width=1)
+        draw.line([(chip_x+2+i*6, chip_y-5), (chip_x+2+i*6, chip_y)], fill=(0, 120, 220), width=1)
+        draw.line([(chip_x+2+i*6, chip_y+28), (chip_x+2+i*6, chip_y+33)], fill=(0, 120, 220), width=1)
+
+    # ---------- 保存 ----------
+    dir_path = os.path.dirname(output_path)
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)
     img.save(output_path, 'PNG')
     return output_path
 
@@ -165,10 +251,10 @@ def parse_html_article(html_path):
     title_match = re.search(r'<title>(.*?)</title>', content, re.IGNORECASE)
     title = title_match.group(1).strip() if title_match else "无标题"
 
-    # 微信公众号标题限制：最多64字节（约32个中文字符）
-    b = title.encode('utf-8')
-    if len(b) > 64:
-        title = b[:64].decode('utf-8', errors='ignore')
+    # 微信公众号标题限制：最多64个字符（实测上限，65字符会报 title size out of limit）
+    # 原文：最多64字节（约32个中文字符）——错误，微信按字符计，非字节
+    if len(title) > 64:
+        title = title[:64]
 
     # 提取正文（移除标题、样式、脚本）
     body_match = re.search(r'<body[^>]*>(.*?)</body>', content, re.IGNORECASE | re.DOTALL)
@@ -607,6 +693,94 @@ def draft_delete(media_id):
         raise Exception(f"删除草稿失败: {data}")
 
 
+def draft_find(keyword):
+    """
+    按标题关键词搜索草稿
+
+    Args:
+        keyword: 搜索关键词（不区分大小写）
+    """
+    access_token = get_access_token()
+    url = f"{API_DRAFT_BATCHGET}?access_token={access_token}"
+
+    # 每次拉20篇，循环直到拉完
+    offset = 0
+    page_size = 20
+    all_items = []
+    while True:
+        json_data = json.dumps({
+            "offset": offset,
+            "count": page_size,
+            "no_content": 0
+        }, ensure_ascii=False).encode('utf-8')
+
+        resp = requests.post(url, data=json_data,
+            headers={'Content-Type': 'application/json; charset=utf-8'}, timeout=30)
+        data = resp.json()
+        errcode = data.get("errcode", 0)
+        if errcode != 0:
+            raise Exception(f"搜索草稿失败: {data}")
+
+        items = data.get("item", [])
+        all_items.extend(items)
+        total = data.get("total_count", 0)
+
+        if len(all_items) >= total or len(items) < page_size:
+            break
+        offset += page_size
+
+    kw_lower = keyword.lower()
+    matched = []
+    for item in all_items:
+        media_id = item.get("media_id", "")
+        articles = item.get("content", {}).get("news_item", [])
+        if not articles:
+            continue
+        art = articles[0]
+        title = art.get("title", "")
+        update_time = datetime.fromtimestamp(item.get("update_time", 0)).strftime("%Y-%m-%d %H:%M")
+        if kw_lower in title.lower():
+            matched.append((title, update_time, media_id))
+
+    if not matched:
+        print(f"[草稿搜索] 关键词「{keyword}」未找到匹配草稿（共扫描 {len(all_items)} 篇）")
+    else:
+        print(f"[草稿搜索] 关键词「{keyword}」，共找到 {len(matched)} 篇（共扫描 {len(all_items)} 篇）:\n")
+        for i, (title, update_time, media_id) in enumerate(matched):
+            print(f"  [{i+1}] {title}")
+            print(f"      {update_time}  |  {media_id}")
+    return matched
+
+
+def draft_batch_del(media_ids):
+    """
+    批量删除草稿
+
+    Args:
+        media_ids: media_id 列表
+    """
+    if not media_ids:
+        print("[ERROR] 未指定要删除的草稿 ID")
+        return
+
+    print(f"[批量删除] 共 {len(media_ids)} 篇草稿...\n")
+    success = 0
+    failed = []
+    for mid in media_ids:
+        try:
+            draft_delete(mid)
+            success += 1
+        except Exception as e:
+            failed.append((mid, str(e)))
+            print(f"[WARN] 删除失败 {mid}: {e}")
+
+    print(f"\n[结果] 成功 {success} 篇，失败 {len(failed)} 篇")
+    if failed:
+        print("失败列表:")
+        for mid, err in failed:
+            print(f"  {mid}: {err}")
+
+
 def published_list(count=10, offset=0):
     """获取已发布文章列表"""
     access_token = get_access_token()
@@ -883,10 +1057,12 @@ def print_usage():
 微信公众号草稿推送工具 v2.0
 
 用法:
-  python wechat_push.py list                          查看草稿列表
+  python wechat_push.py list                          查看草稿列表（含标题+更新时间）
   python wechat_push.py create <html文件>              创建新草稿
   python wechat_push.py update <media_id> <html文件> [--force-cover]   更新已有草稿（默认复用封面）
   python wechat_push.py delete <media_id>              删除草稿
+  python wechat_push.py find <关键词>                  按标题关键词搜索草稿
+  python wechat_push.py batch-del <id1> [id2] ...     批量删除草稿
   python wechat_push.py upload <图片文件>              上传永久素材（图片）
   python wechat_push.py materialcount                  获取永久素材总数统计
   python wechat_push.py materials [type] [count] [offset]  批量获取永久素材列表
@@ -896,6 +1072,7 @@ def print_usage():
   python wechat_push.py userstat <begin> <end>         指定日期范围查询
   python wechat_push.py userinfo <openid>              获取用户基本信息
   python wechat_push.py userlist [next_openid]         获取用户列表
+  python wechat_push.py cover <标题> [html文件]        生成封面图（指定HTML则保存到同目录）
   python wechat_push.py published                      获取已发布文章列表
 
 示例:
@@ -954,6 +1131,20 @@ def main():
                 print("用法: python wechat_push.py delete <media_id>")
                 sys.exit(1)
             draft_delete(args[1])
+
+        elif cmd == 'find':
+            if len(args) < 2:
+                print("[ERROR] 请指定搜索关键词")
+                print("用法: python wechat_push.py find <关键词>")
+                sys.exit(1)
+            draft_find(args[1])
+
+        elif cmd == 'batch-del':
+            if len(args) < 2:
+                print("[ERROR] 请指定要删除的 media_id（至少一个）")
+                print("用法: python wechat_push.py batch-del <id1> [id2] [id3] ...")
+                sys.exit(1)
+            draft_batch_del(args[1:])
 
         elif cmd == 'upload':
             if len(args) < 2:
@@ -1019,6 +1210,31 @@ def main():
         elif cmd == 'userlist':
             next_openid = args[1] if len(args) >= 2 else ""
             user_list(next_openid)
+
+        elif cmd == 'cover':
+            if len(args) < 2:
+                print("[ERROR] 请指定标题")
+                print("用法: python wechat_push.py cover <标题> [html文件]")
+                sys.exit(1)
+            title = args[1]
+            if len(args) >= 3 and args[2].endswith('.html'):
+                # 指定了HTML文件，封面保存到同目录
+                html_path = args[2]
+                title = args[1]
+                dir_path = os.path.dirname(os.path.abspath(html_path))
+                safe_name = re.sub(r'[^\w\u4e00-\u9fff]', '_', title)[:20]
+                output_path = os.path.join(dir_path, f"cover_{safe_name}.png")
+            else:
+                # 未指定HTML，保存到 skill 目录下的 TMP/
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                tmp_dir = os.path.join(script_dir, "TMP")
+                os.makedirs(tmp_dir, exist_ok=True)
+                safe_name = re.sub(r'[^\w\u4e00-\u9fff]', '_', title)[:20]
+                output_path = os.path.join(tmp_dir, f"cover_{safe_name}.png")
+
+            result = generate_cover(title, output_path)
+            if result:
+                print(f"[OK] 封面图已生成: {output_path}")
 
         else:
             # 兼容旧用法：直接传html文件路径 = 创建新草稿

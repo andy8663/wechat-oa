@@ -3,4 +3,4 @@ draft_ids.txt
 __pycache__/
 *.pyc
 *.pyo
-cover_latest.png
+TMP/
