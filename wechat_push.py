@@ -67,6 +67,10 @@ API_DRAFT_UPDATE = "https://api.weixin.qq.com/cgi-bin/draft/update"
 API_DRAFT_DELETE = "https://api.weixin.qq.com/cgi-bin/draft/delete"
 API_DRAFT_BATCHGET = "https://api.weixin.qq.com/cgi-bin/draft/batchget"
 API_MATERIAL_ADD = "https://api.weixin.qq.com/cgi-bin/material/add_material"
+API_MATERIAL_GET = "https://api.weixin.qq.com/cgi-bin/material/get_material"
+API_MATERIAL_DEL = "https://api.weixin.qq.com/cgi-bin/material/del_material"
+API_MATERIAL_COUNT = "https://api.weixin.qq.com/cgi-bin/material/get_materialcount"
+API_MATERIAL_BATCHGET = "https://api.weixin.qq.com/cgi-bin/material/batchget_material"
 API_PUBLISHED_BATCHGET = "https://api.weixin.qq.com/cgi-bin/material/batchget_material"
 
 
@@ -655,6 +659,94 @@ def material_upload(image_path):
         raise Exception(f"上传素材失败: {data}")
 
 
+def material_count():
+    """获取各类永久素材总数"""
+    access_token = get_access_token()
+    url = f"{API_MATERIAL_COUNT}?access_token={access_token}"
+    resp = errwrap_get(url)
+    data = resp.json()
+
+    errcode = data.get("errcode", 0)
+    if errcode != 0:
+        raise Exception(f"获取素材总数失败: {data}")
+
+    voice_count = data.get("voice_count", 0)
+    video_count = data.get("video_count", 0)
+    image_count = data.get("image_count", 0)
+    news_count = data.get("news_count", 0)
+    total = voice_count + video_count + image_count + news_count
+
+    print(f"\n[永久素材统计]")
+    print(f"  语音: {voice_count}")
+    print(f"  视频: {video_count}")
+    print(f"  图片: {image_count}")
+    print(f"  图文: {news_count}")
+    print(f"  ─────────────────")
+    print(f"  合计: {total}")
+    return data
+
+
+def material_list(mtype="image", count=20, offset=0):
+    """批量获取永久素材列表
+
+    Args:
+        mtype: 素材类型，支持 image / video / voice / news
+        count: 每页数量，默认20
+        offset: 偏移量，默认0
+    """
+    access_token = get_access_token()
+    url = f"{API_MATERIAL_BATCHGET}?access_token={access_token}"
+
+    json_data = json.dumps({
+        "type": mtype,
+        "offset": offset,
+        "count": count
+    }, ensure_ascii=False).encode('utf-8')
+
+    resp = requests.post(url, data=json_data, headers={'Content-Type': 'application/json; charset=utf-8'}, timeout=30)
+    data = resp.json()
+
+    errcode = data.get("errcode", 0)
+    if errcode != 0:
+        raise Exception(f"获取素材列表失败: {data}")
+
+    items = data.get("item", [])
+    total = data.get("total_count", 0)
+
+    type_label = {"image": "图片", "video": "视频", "voice": "语音", "news": "图文"}
+    label = type_label.get(mtype, mtype)
+
+    print(f"\n[永久素材列表] 类型:{label}  共{total}个 (显示{len(items)}个):\n")
+    for i, item in enumerate(items):
+        media_id = item.get("media_id", "N/A")
+        update_time = datetime.fromtimestamp(item.get("update_time", 0)).strftime("%Y-%m-%d %H:%M")
+
+        if mtype == "image":
+            name = item.get("name", "N/A")
+            url_out = item.get("url", "")
+            print(f"  [{i+1}] {name}  |  {update_time}  |  {media_id}")
+            if url_out:
+                print(f"      URL: {url_out}")
+        elif mtype == "video":
+            name = item.get("name", "N/A")
+            print(f"  [{i+1}] {name}  |  {update_time}  |  {media_id}")
+        elif mtype == "voice":
+            name = item.get("name", "N/A")
+            print(f"  [{i+1}] {name}  |  {update_time}  |  {media_id}")
+        elif mtype == "news":
+            articles = item.get("content", {}).get("news_item", [])
+            if articles:
+                title = articles[0].get("title", "无标题")
+                print(f"  [{i+1}] {title}  |  {update_time}  |  {media_id}")
+        print()
+    return items
+
+
+def errwrap_get(url):
+    """兼容 requests.get 的包装（API 实际返回 JSON）"""
+    return requests.get(url, timeout=30)
+
+
 def print_usage():
     print("""
 微信公众号草稿推送工具 v2.0
@@ -664,14 +756,19 @@ def print_usage():
   python wechat_push.py create <html文件>              创建新草稿
   python wechat_push.py update <media_id> <html文件> [--force-cover]   更新已有草稿（默认复用封面）
   python wechat_push.py delete <media_id>              删除草稿
-  python wechat_push.py upload <图片文件>              上传永久素材
+  python wechat_push.py upload <图片文件>              上传永久素材（图片）
+  python wechat_push.py materialcount                  获取永久素材总数统计
+  python wechat_push.py materials [type] [count] [offset]  批量获取永久素材列表
+                                                          type: image/video/voice/news，默认 image
+  python wechat_push.py materialdel <media_id>         删除永久素材
+  python wechat_push.py published                      获取已发布文章列表
 
 示例:
   python wechat_push.py list
   python wechat_push.py create article.html
-  python wechat_push.py update n2BZd2CzoCKkl... article.html
-  python wechat_push.py delete n2BZd2CzoCKkl...
-  python wechat_push.py upload cover.png
+  python wechat_push.py materialcount
+  python wechat_push.py materials image 20 0
+  python wechat_push.py materials news 10 0
 """)
 
 
@@ -732,6 +829,37 @@ def main():
 
         elif cmd == 'published':
             published_list()
+
+        elif cmd == 'materialcount':
+            material_count()
+
+        elif cmd == 'materials':
+            # 解析: materials [type] [count] [offset]
+            mtype = "image"
+            count = 20
+            offset = 0
+            if len(args) >= 2:
+                mtype = args[1]
+            if len(args) >= 3:
+                count = int(args[2])
+            if len(args) >= 4:
+                offset = int(args[3])
+            material_list(mtype, count, offset)
+
+        elif cmd == 'materialdel':
+            if len(args) < 2:
+                print("[ERROR] 请指定 media_id")
+                print("用法: python wechat_push.py materialdel <media_id>")
+                sys.exit(1)
+            access_token = get_access_token()
+            url = f"{API_MATERIAL_DEL}?access_token={access_token}"
+            json_data = json.dumps({"media_id": args[1]}, ensure_ascii=False).encode('utf-8')
+            resp = requests.post(url, data=json_data, headers={'Content-Type': 'application/json; charset=utf-8'}, timeout=30)
+            data = resp.json()
+            if data.get("errcode") == 0:
+                print(f"[OK] 永久素材已删除: {args[1]}")
+            else:
+                raise Exception(f"删除素材失败: {data}")
 
         else:
             # 兼容旧用法：直接传html文件路径 = 创建新草稿

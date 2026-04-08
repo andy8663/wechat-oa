@@ -33,6 +33,10 @@ WeChat Official Account draft management toolkit. Built on official WeChat APIs,
 | `update <media_id> <html> --force-cover` | 更新草稿并强制重新生成封面 / Update draft + force-regenerate cover | `draft/update` |
 | `delete <media_id>` | 删除草稿 / Delete draft | `draft/delete` |
 | `upload <图片文件>` | 上传图片到永久素材库 / Upload image to permanent material | `material/add_material` |
+| `materialcount` | 获取各类永久素材总数 / Get permanent material count by type | `material/get_materialcount` |
+| `materials [type] [count] [offset]` | 批量获取永久素材列表 / Batch list permanent materials | `material/batchget_material` |
+| `materialdel <media_id>` | 删除永久素材 / Delete permanent material | `material/del_material` |
+| `published` | 获取已发布文章列表 / List published articles | `material/batchget_material` |
 | `cover <标题>` | 生成封面图预览（不推送）/ Generate cover preview (no push) | PIL local generation |
 
 ## 初始化配置 / Initial Setup
