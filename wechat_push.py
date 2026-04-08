@@ -247,9 +247,21 @@ def parse_html_article(html_path):
     with open(html_path, 'r', encoding='utf-8', errors='ignore') as f:
         content = f.read()
 
-    # 提取标题
-    title_match = re.search(r'<title>(.*?)</title>', content, re.IGNORECASE)
-    title = title_match.group(1).strip() if title_match else "无标题"
+    # 提取标题：优先 <title>，其次 <h1>，最后找第一个 <hN> 标题
+    title = "无标题"
+    for pattern in [
+        r'<title[^>]*>(.*?)</title>',
+        r'<h1[^>]*>(.*?)</h1>',
+        r'<h2[^>]*>(.*?)</h2>',
+    ]:
+        m = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+        if m:
+            candidate = m.group(1).strip()
+            # 去掉标签残片
+            candidate = re.sub(r'<[^>]+>', '', candidate).strip()
+            if candidate and candidate != "无标题":
+                title = candidate
+                break
 
     # 微信公众号标题限制：最多64个字符（实测上限，65字符会报 title size out of limit）
     # 原文：最多64字节（约32个中文字符）——错误，微信按字符计，非字节
