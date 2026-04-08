@@ -38,6 +38,8 @@ WeChat Official Account draft management toolkit. Built on official WeChat APIs,
 | `materialdel <media_id>` | 删除永久素材 / Delete permanent material | `material/del_material` |
 | `published` | 获取已发布文章列表 / List published articles | `material/batchget_material` |
 | `cover <标题>` | 生成封面图预览（不推送）/ Generate cover preview (no push) | PIL local generation |
+| `userinfo <openid>` | 获取用户基本信息（需认证账号）/ Get user info by openid | `user/info` |
+| `userlist [next_openid]` | 获取用户列表（需认证账号）/ List all users | `user/get` |
 
 ## 初始化配置 / Initial Setup
 

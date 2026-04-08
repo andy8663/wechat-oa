@@ -72,6 +72,10 @@ API_MATERIAL_DEL = "https://api.weixin.qq.com/cgi-bin/material/del_material"
 API_MATERIAL_COUNT = "https://api.weixin.qq.com/cgi-bin/material/get_materialcount"
 API_MATERIAL_BATCHGET = "https://api.weixin.qq.com/cgi-bin/material/batchget_material"
 API_PUBLISHED_BATCHGET = "https://api.weixin.qq.com/cgi-bin/material/batchget_material"
+API_USER_SUMMARY = "https://api.weixin.qq.com/datacube/getusersummary"
+API_USER_CUMULATE = "https://api.weixin.qq.com/datacube/getusercumulate"
+API_USER_INFO = "https://api.weixin.qq.com/cgi-bin/user/info"
+API_USER_LIST = "https://api.weixin.qq.com/cgi-bin/user/get"
 
 
 def hex_to_rgb(hex_color):
@@ -747,6 +751,133 @@ def errwrap_get(url):
     return requests.get(url, timeout=30)
 
 
+def user_summary(begin_date, end_date):
+    """获取用户增减数据（每日明细）
+
+    Args:
+        begin_date: 开始日期，格式 YYYY-MM-DD
+        end_date: 结束日期，格式 YYYY-MMDD
+    """
+    access_token = get_access_token()
+    url = f"{API_USER_SUMMARY}?access_token={access_token}"
+
+    json_data = json.dumps({
+        "begin_date": begin_date,
+        "end_date": end_date
+    }, ensure_ascii=False).encode('utf-8')
+
+    resp = requests.post(url, data=json_data, headers={'Content-Type': 'application/json; charset=utf-8'}, timeout=30)
+    data = resp.json()
+
+    errcode = data.get("errcode", 0)
+    if errcode != 0:
+        raise Exception(f"获取用户数据失败: {data}")
+
+    list_data = data.get("list", [])
+    if not list_data:
+        print(f"\n[用户增减数据] {begin_date} ~ {end_date}，无数据")
+        return data
+
+    # 表头
+    print(f"\n[用户增减数据] {begin_date} ~ {end_date}")
+    print(f"  {'日期':<12} {'新增用户':>8} {'取消关注':>8} {'净增关注':>8} {'累计关注':>10}")
+    print(f"  {'-'*12} {'-'*8} {'-'*8} {'-'*8} {'-'*10}")
+
+    total_new = 0
+    total_cancel = 0
+    for item in list_data:
+        ref_date = item.get("ref_date", "")
+        new_user = item.get("new_user", 0)
+        cancel_user = item.get("cancel_user", 0)
+        net = new_user - cancel_user
+        cumulate = item.get("cumulate_user", "-")
+        total_new += new_user
+        total_cancel += cancel_user
+        net_str = f"+{net}" if net >= 0 else str(net)
+        cumulate_str = str(cumulate) if cumulate != "-" else "-"
+        print(f"  {ref_date:<12} {new_user:>8} {cancel_user:>8} {net_str:>8} {cumulate_str:>10}")
+
+    total_net = total_new - total_cancel
+    total_net_str = f"+{total_net}" if total_net >= 0 else str(total_net)
+    print(f"  {'='*12} {'='*8} {'='*8} {'='*8} {'='*10}")
+    print(f"  {'合计':<12} {total_new:>8} {total_cancel:>8} {total_net_str:>8}")
+    return data
+
+
+def user_info(openid):
+    """获取用户基本信息"""
+    access_token = get_access_token()
+    url = f"{API_USER_INFO}?access_token={access_token}&openid={openid}&lang=zh_CN"
+    resp = requests.get(url, timeout=30)
+    data = resp.json()
+
+    errcode = data.get("errcode", 0)
+    if errcode != 0:
+        raise Exception(f"获取用户信息失败: {data}")
+
+    subscribe = data.get("subscribe", 0)
+    if not subscribe:
+        print(f"\n[用户信息] openid: {openid}")
+        print(f"  ⚠️ 该用户未关注公众号")
+        return data
+
+    nickname = data.get("nickname", "-")
+    sex_map = {"0": "未知", "1": "男", "2": "女"}
+    sex = sex_map.get(str(data.get("sex", "")), "-")
+    province = data.get("province", "-")
+    city = data.get("city", "-")
+    country = data.get("country", "-")
+    subscribe_time = data.get("subscribe_time", 0)
+    subscribe_time_str = datetime.fromtimestamp(subscribe_time).strftime("%Y-%m-%d %H:%M") if subscribe_time else "-"
+    groupid = data.get("groupid", "-")
+    tagids = data.get("tagid_list", [])
+    tagids_str = ", ".join(str(t) for t in tagids) if tagids else "无"
+    remark = data.get("remark", "-") or "-"
+
+    print(f"\n[用户基本信息]")
+    print(f"  OpenID:   {openid}")
+    print(f"  昵称:     {nickname}")
+    print(f"  性别:     {sex}")
+    print(f"  地区:     {country} {province} {city}")
+    print(f"  关注时间: {subscribe_time_str}")
+    print(f"  分组ID:   {groupid}")
+    print(f"  标签:     {tagids_str}")
+    print(f"  备注:     {remark}")
+    return data
+
+
+def user_list(next_openid=""):
+    """获取用户列表"""
+    access_token = get_access_token()
+    url = f"{API_USER_LIST}?access_token={access_token}"
+    if next_openid:
+        url += f"&next_openid={next_openid}"
+
+    resp = requests.get(url, timeout=30)
+    data = resp.json()
+
+    errcode = data.get("errcode", 0)
+    if errcode != 0:
+        raise Exception(f"获取用户列表失败: {data}")
+
+    total = data.get("total", 0)
+    count = data.get("count", 0)
+    next_openid_out = data.get("next_openid", "")
+
+    print(f"\n[用户列表]")
+    print(f"  总关注人数: {total}")
+    print(f"  本次返回:   {count}")
+    print(f"  下一页ID:  {next_openid_out or '(无更多)'}")
+    print()
+
+    openids = data.get("data", {}).get("openid", [])
+    for i, oid in enumerate(openids):
+        print(f"  [{i+1}] {oid}")
+    if not openids:
+        print("  (空)")
+    return data
+
+
 def print_usage():
     print("""
 微信公众号草稿推送工具 v2.0
@@ -761,6 +892,10 @@ def print_usage():
   python wechat_push.py materials [type] [count] [offset]  批量获取永久素材列表
                                                           type: image/video/voice/news，默认 image
   python wechat_push.py materialdel <media_id>         删除永久素材
+  python wechat_push.py userstat [天数]               获取用户增减数据（默认近7天）
+  python wechat_push.py userstat <begin> <end>         指定日期范围查询
+  python wechat_push.py userinfo <openid>              获取用户基本信息
+  python wechat_push.py userlist [next_openid]         获取用户列表
   python wechat_push.py published                      获取已发布文章列表
 
 示例:
@@ -860,6 +995,30 @@ def main():
                 print(f"[OK] 永久素材已删除: {args[1]}")
             else:
                 raise Exception(f"删除素材失败: {data}")
+
+        elif cmd == 'userstat':
+            # 解析日期范围，支持 userstat / userstat 7 / userstat 2026-03-01 2026-03-07
+            from datetime import datetime, timedelta
+            today = datetime.now()
+            if len(args) >= 2 and '-' in args[1]:
+                begin_date = args[1]
+                end_date = args[2] if len(args) >= 3 else args[1]
+            else:
+                days = int(args[1]) if len(args) >= 2 else 7
+                end_date = (today).strftime("%Y-%m-%d")
+                begin_date = (today - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+            user_summary(begin_date, end_date)
+
+        elif cmd == 'userinfo':
+            if len(args) < 2:
+                print("[ERROR] 请指定 OpenID")
+                print("用法: python wechat_push.py userinfo <openid>")
+                sys.exit(1)
+            user_info(args[1])
+
+        elif cmd == 'userlist':
+            next_openid = args[1] if len(args) >= 2 else ""
+            user_list(next_openid)
 
         else:
             # 兼容旧用法：直接传html文件路径 = 创建新草稿
