@@ -1,7 +1,7 @@
 ---
 name: wechat-oa
 description: 微信公众号草稿箱管理工具集。支持草稿创建/更新/删除/列表查询、自动封面图生成、HTML行内样式转换。基于官方微信 API，无需第三方依赖。 / WeChat Official Account draft management toolkit. Supports draft CRUD, auto cover generation, and HTML inline-style conversion via official WeChat APIs.
-version: "1.0.2"
+version: "1.1.0"
 homepage: https://github.com/woody-life/wechat-oa
 metadata:
   openclaw:

@@ -214,24 +214,36 @@ def upload_image(access_token, image_path):
 
 
 def generate_cover_and_upload(access_token, title, html_path):
-    """生成封面图并上传，返回 thumb_media_id"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    cover_dir = Path(html_path).parent
-    cover_path = cover_dir / f"cover_{timestamp}.png"
+    """
+    生成封面图并上传，返回 thumb_media_id。
+
+    封面图保存到 skill 目录（而非 HTML 所在目录），
+    避免 Windows 中文路径导致 PIL img.save() 失败。
+    如果封面图生成失败，返回空字符串；草稿仍可创建（需手动补封面）。
+    """
+    # 固定保存到 skill 目录，文件名不含中文，避免路径编码问题
+    skill_dir = Path(__file__).parent
+    cover_path = skill_dir / "cover_latest.png"
 
     print(f"[COVER] 正在生成封面图...")
+    cover_ok = False
     try:
         generate_cover(title, str(cover_path))
         print(f"[OK] 封面图已保存: {cover_path}")
+        cover_ok = True
     except Exception as e:
-        print(f"[WARN] 封面图生成失败: {e}")
-        cover_path = None
+        print(f"[WARN] 封面图生成失败: {e}，将跳过封面（需手动补封面图）")
 
     thumb_media_id = ""
-    if cover_path and Path(cover_path).exists():
+    if cover_ok and cover_path.exists():
         print("[IMG] 正在上传封面图...")
-        thumb_media_id = upload_image(access_token, str(cover_path))
-        print(f"[OK] 封面图已上传: {thumb_media_id}")
+        try:
+            thumb_media_id = upload_image(access_token, str(cover_path))
+            print(f"[OK] 封面图已上传: {thumb_media_id}")
+        except Exception as e:
+            print(f"[WARN] 封面上传失败: {e}，将跳过封面")
+    else:
+        print("[WARN] 封面图文件不存在，跳过上传")
 
     return thumb_media_id
 
@@ -438,7 +450,7 @@ def draft_create(html_path, force_cover=False):
 
     Args:
         html_path: HTML 文件路径
-        force_cover: 是否强制重新生成封面，默认 False（新建草稿时默认生成新封面）
+        force_cover: 是否强制重新生成封面，默认 False（新建草稿无旧封面可复用）
     """
     title, content = parse_html_article(html_path)
     print(f"[TITLE] {title}")
@@ -446,17 +458,18 @@ def draft_create(html_path, force_cover=False):
 
     access_token = get_access_token()
 
-    # 封面逻辑：默认生成新封面（新建草稿无旧封面可复用），--force-cover 可覆盖此行为
-    if not force_cover:
-        thumb_media_id = generate_cover_and_upload(access_token, title, html_path)
-        print("[COVER] 已生成新封面")
-    else:
-        # --force-cover 时也生成新封面（行为与上面相同，保留此分支便于扩展）
-        thumb_media_id = generate_cover_and_upload(access_token, title, html_path)
-        print("[COVER] 已强制重新生成封面")
+    # 封面：生成并上传到 skill 目录（避免中文路径），封面失败则报错退出
+    thumb_media_id = generate_cover_and_upload(access_token, title, html_path)
+    if not thumb_media_id:
+        raise Exception(
+            "[ERROR] 封面图生成/上传失败，无法创建草稿（草稿必须有封面图）。"
+            "请确保已安装 Pillow: pip install Pillow"
+        )
 
     article = build_article(title, content, thumb_media_id)
 
+    # ★ 关键修复：必须用 data=json.dumps(..., ensure_ascii=False).encode('utf-8')
+    # 绝对不能用 json=payload（默认 ASCII 转义，中文会变成 \\uXXXX 导致乱码）
     json_data = json.dumps({"articles": [article]}, ensure_ascii=False).encode('utf-8')
     url = f"{API_DRAFT_ADD}?access_token={access_token}"
     resp = requests.post(url, data=json_data, headers={'Content-Type': 'application/json; charset=utf-8'}, timeout=30)
