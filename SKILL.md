@@ -1,7 +1,7 @@
 ---
 name: wechat-oa
 description: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/按关键词找草稿/按标题搜/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/批量删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/已发布文章列表/公众号素材列表。官方API，无需第三方依赖。
-version: "1.1.1"
+version: "1.2.0"
 homepage: https://github.com/woody-life/wechat-oa
 metadata:
   openclaw:
@@ -19,9 +19,29 @@ WeChat Official Account draft management toolkit. Built on official WeChat APIs,
 
 ## 特性 / Features
 
+- **公众号排版规范** / WeChat MP layout specification：内置 `design.md` 排版规范，AI 生成 HTML 时必须遵循，确保公众号渲染兼容 / Built-in `design.md` layout spec that AI must follow when generating HTML, ensuring WeChat rendering compatibility
 - **行内样式转换** / Inline-style conversion：自动将 HTML 中的 `<style>` 标签转换为行内 `style=""` 属性，兼容微信文章渲染（已固化到 skill） / Auto-converts `<style>` tags into inline `style=""` attributes for WeChat-compatible rendering (baked into this skill)
 - **自动封面生成** / Auto cover generation：根据文章标题 AI 生成科技风封面图（2.35:1 比例） / AI-generated tech-style cover image from article title (2.35:1 ratio)
 - **智能摘要** / Smart digest：自动从正文中选取含功能关键词的段落作为摘要，而非机械截取前80字 / Intelligently selects keyword-rich paragraphs as digest instead of blindly truncating at 80 chars
+
+## ⚠️ 排版规范（必读） / Layout Specification (MUST READ)
+
+**创建或更新公众号文章前，AI 必须先阅读 `design.md`，严格按其规范生成 HTML。**
+
+Before creating or updating any WeChat article, AI MUST read `design.md` and strictly follow its rules to generate HTML.
+
+`design.md` 规范涵盖 / `design.md` covers:
+- 容器宽度（文章 677px / 图文卡片 375px）
+- 字体规范（clamp() 响应式字号）
+- 配色规范（≤5 主体色，对比度 ≥4.5:1）
+- 布局规范（Flex/Grid only，禁止 absolute/float）
+- 标题规范（禁止重复主标题、header 标签、左边框装饰）
+- 内容结构（扁平结构，有/无背景色的 padding 规则不同）
+- CSS/HTML/JS 限制（公众号渲染器兼容性白名单）
+
+支持的创作类型 / Supported creation types:
+- **文章**：通用类型，页面默认宽度 677px
+- **贴图**：图文卡片（小绿书/小红书风格），页面默认宽度 375px，固定分页比例（默认 3:4）
 
 ## 功能与对应API / Commands & APIs
 
