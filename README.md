@@ -74,3 +74,10 @@ python wechat_push.py cover "文章标题"
 - Python 3.8+
 - `requests`
 - `Pillow`
+
+---
+
+## 问题反馈 / Feedback
+
+- 🌐 GitHub：[https://github.com/andy8663/wechat-oa](https://github.com/andy8663/wechat-oa)
+- 📧 邮箱：`andy8663@126.com`

@@ -1,8 +1,8 @@
 ---
 name: wechat-oa
 description: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/按关键词找草稿/按标题搜/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/批量删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/已发布文章列表/公众号素材列表。官方API，无需第三方依赖。
-version: "1.2.0"
-homepage: https://github.com/woody-life/wechat-oa
+version: "1.2.1"
+homepage: https://github.com/andy8663/wechat-oa
 metadata:
   openclaw:
     emoji: "📝"
@@ -139,3 +139,14 @@ pip install requests Pillow
 
 - `draft_ids.txt` - 草稿记录（创建时间、标题、media_id）/ Draft log (timestamp, title, media_id)
 - 封面图默认保存在 HTML 文件同目录 / Cover images saved in the same directory as the HTML file by default
+
+## 问题反馈 / Feedback
+
+遇到问题或功能建议？欢迎通过以下方式联系我们：
+
+- 🌐 **GitHub Issues**：[https://github.com/andy8663/wechat-oa](https://github.com/andy8663/wechat-oa)
+  - 提交 Bug 报告或功能请求 / Submit bug reports or feature requests
+- 📧 **邮箱**：`andy8663@126.com`
+  - 邮件咨询 / Email for inquiries
+
+> 💡 提交 Issue 前建议先搜索是否已有类似问题 / Please search existing issues before submitting new ones.
