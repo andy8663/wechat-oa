@@ -28,6 +28,7 @@ import re
 import os
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import unquote
 
 # 尝试导入 PIL，用于生成封面图
 try:
@@ -1226,7 +1227,7 @@ def material_list(mtype="image", count=20, offset=0, keyword=None):
         update_time = datetime.fromtimestamp(item.get("update_time", 0)).strftime("%Y-%m-%d %H:%M")
 
         if mtype == "image":
-            name = item.get("name", "N/A")
+            name = unquote(item.get("name", "N/A"))
             url_out = item.get("url", "")
             print(f"  [{i+1}] {name}  |  {update_time}  |  {media_id}")
             if url_out:
@@ -1640,10 +1641,6 @@ def main():
                     print(f"  删除失败 {mid}: {e}")
                     fail += 1
             print(f"\n完成：成功 {success} 个，失败 {fail} 个")
-            if data.get("errcode") == 0:
-                print(f"[OK] 永久素材已删除: {args[1]}")
-            else:
-                raise Exception(f"删除素材失败: {data}")
 
         elif cmd == 'userstat':
             # 解析日期范围，支持 userstat / userstat 7 / userstat 2026-03-01 2026-03-07
