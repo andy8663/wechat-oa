@@ -36,6 +36,13 @@ try:
 except ImportError:
     HAS_PIL = False
 
+# 尝试导入 premailer，用于 CSS 内联转换
+try:
+    from premailer import Premailer
+    HAS_PREMAILER = True
+except ImportError:
+    HAS_PREMAILER = False
+
 # 配置 - 从 config.json 读取
 CONFIG_FILE = Path(__file__).parent / "config.json"
 
@@ -243,7 +250,7 @@ def get_access_token():
 
 
 def parse_html_article(html_path):
-    """解析 HTML 文件，提取标题和正文"""
+    """解析 HTML 文件，提取标题、正文和样式"""
     with open(html_path, 'r', encoding='utf-8', errors='ignore') as f:
         content = f.read()
 
@@ -268,6 +275,10 @@ def parse_html_article(html_path):
     if len(title) > 64:
         title = title[:64]
 
+    # 提取 <style> 标签内容（用于 CSS 内联转换）
+    style_blocks = re.findall(r'<style[^>]*>(.*?)</style>', content, re.IGNORECASE | re.DOTALL)
+    style_content = '\n'.join(style_blocks)
+
     # 提取正文（移除标题、样式、脚本）
     body_match = re.search(r'<body[^>]*>(.*?)</body>', content, re.IGNORECASE | re.DOTALL)
     if body_match:
@@ -283,9 +294,9 @@ def parse_html_article(html_path):
         body = re.sub(r'<head[^>]*>.*?</head>', '', body, flags=re.IGNORECASE | re.DOTALL)
         body = re.sub(r'<title[^>]*>.*?</title>', '', body, flags=re.IGNORECASE | re.DOTALL)
 
-    # 移除 script（style 标签保留，供 css_to_inline 转换为行内样式）
+    # 移除 script（style 标签已在上面提取，这里从 body 中移除）
     body = re.sub(r'<script[^>]*>.*?</script>', '', body, flags=re.IGNORECASE | re.DOTALL)
-    # body = re.sub(r'<style[^>]*>.*?</style>', '', body, ...)  # 注释：保留，css_to_inline 会转换
+    body = re.sub(r'<style[^>]*>.*?</style>', '', body, flags=re.IGNORECASE | re.DOTALL)
 
     # 修复列表项之间的多余空行：</li> 和 <li> 之间不能有换行/空格
     # 同时处理 </li> 与 </ul>/</ol> 之间的空行
@@ -301,7 +312,7 @@ def parse_html_article(html_path):
     body = re.sub(r' *\n *', '\n', body)       # 每行首尾空格
     body = re.sub(r'>\n+<', '><', body)        # 标签间多余空行
 
-    return title.strip(), body.strip()
+    return title.strip(), body.strip(), style_content.strip()
 
 
 def upload_image(access_token, image_path):
@@ -361,6 +372,29 @@ def css_to_inline(html):
     """
     将 HTML 中 <style> 标签内的 CSS 规则转换为行内样式。
     微信会过滤 <style> 标签，此函数确保样式在行内生效。
+    
+    优先使用 premailer 库（如果已安装），否则使用原生实现。
+    """
+    if HAS_PREMAILER:
+        try:
+            # 使用 premailer 进行专业的 CSS 内联转换
+            p = Premailer(
+                html,
+                remove_classes=False,  # 保留 class 属性
+                strip_important=False,  # 保留 !important
+                include_star_selectors=False,  # 忽略 * 选择器
+                disable_link_rewrites=True  # 禁用自动链接重写，保留原始链接
+            )
+            return p.transform()
+        except Exception as e:
+            print(f"[WARN] premailer 转换失败，回退到原生实现: {e}")
+            return _css_to_inline_native(html)
+    else:
+        return _css_to_inline_native(html)
+
+def _css_to_inline_native(html):
+    """
+    原生 CSS 内联转换实现（作为 premailer 的 fallback）。
     支持：标签选择器、class 选择器、tag.class 组合。
     """
     css_map = {}
@@ -523,13 +557,30 @@ def _extract_digest(content, max_len=80):
 
 
 
-def build_article(title, content, thumb_media_id, author=None):
+def build_article(title, content, thumb_media_id, style_content="", author=None):
     """构建图文消息数据"""
     if author is None:
         author = CONFIG.get("author", "Woody")
 
     # 微信过滤 <style> 标签，转为行内样式
-    content = css_to_inline(content)
+    # 将 style 和 body 组合成完整 HTML 供 premailer 处理
+    if style_content:
+        full_html = f'<html><head><style>{style_content}</style></head><body>{content}</body></html>'
+    else:
+        full_html = content
+    content = css_to_inline(full_html)
+    # 如果返回的是完整 HTML，提取 body 内容
+    body_match = re.search(r'<body[^>]*>(.*?)</body>', content, re.IGNORECASE | re.DOTALL)
+    if body_match:
+        content = body_match.group(1)
+
+    # 清理 premailer 产生的标签间换行和多余空格
+    # 修复列表项之间的空白
+    content = re.sub(r'<(li|ul|ol|p|div|h[1-6]|section|article|header|footer|nav|aside|main|figure|figcaption|blockquote|pre|code|table|thead|tbody|tr|td|th|caption)\s*>\s*\n\s*<', r'<\1><', content, flags=re.IGNORECASE)
+    content = re.sub(r'>\s*\n\s*<', '><', content)  # 全局标签间换行
+    content = re.sub(r'\n\s*<', '<', content)  # 行首标签前的换行
+    content = re.sub(r'>\s*\n', '>', content)  # 行尾标签后的换行
+    content = re.sub(r'[ \t]{2,}', ' ', content)  # 多个空格合并
 
     # 摘要：智能提取
     digest = _extract_digest(content)
@@ -561,9 +612,11 @@ def draft_create(html_path, force_cover=False):
         html_path: HTML 文件路径
         force_cover: 是否强制重新生成封面，默认 False（新建草稿无旧封面可复用）
     """
-    title, content = parse_html_article(html_path)
+    title, content, style_content = parse_html_article(html_path)
     print(f"[TITLE] {title}")
     print(f"[LENGTH] {len(content)} chars")
+    if style_content:
+        print(f"[STYLE] 提取到 {len(style_content)} 字符 CSS 样式")
 
     access_token = get_access_token()
 
@@ -575,7 +628,7 @@ def draft_create(html_path, force_cover=False):
             "请确保已安装 Pillow: pip install Pillow"
         )
 
-    article = build_article(title, content, thumb_media_id)
+    article = build_article(title, content, thumb_media_id, style_content)
 
     # ★ 关键修复：必须用 data=json.dumps(..., ensure_ascii=False).encode('utf-8')
     # 绝对不能用 json=payload（默认 ASCII 转义，中文会变成 \\uXXXX 导致乱码）
@@ -616,9 +669,11 @@ def draft_update(media_id, html_path, force_cover=False):
         html_path: HTML 文件路径
         force_cover: 是否强制重新生成封面，默认 False（复用已有封面）
     """
-    title, content = parse_html_article(html_path)
+    title, content, style_content = parse_html_article(html_path)
     print(f"[TITLE] {title}")
     print(f"[LENGTH] {len(content)} chars")
+    if style_content:
+        print(f"[STYLE] 提取到 {len(style_content)} 字符 CSS 样式")
     print(f"[TARGET] 更新草稿: {media_id}")
 
     access_token = get_access_token()
@@ -637,7 +692,7 @@ def draft_update(media_id, html_path, force_cover=False):
             thumb_media_id = generate_cover_and_upload(access_token, title, html_path)
             print(f"[COVER] 无已有封面，已生成新封面")
 
-    article = build_article(title, content, thumb_media_id)
+    article = build_article(title, content, thumb_media_id, style_content)
 
     json_data = json.dumps({
         "media_id": media_id,
