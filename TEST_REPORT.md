@@ -73,6 +73,15 @@ name = unquote(name)
 
 ---
 
+## Bug 修复记录
+
+| Bug | 状态 |
+|-----|------|
+| materialdel 删除后 name 'data' 未定义 | ✅ 已修复 |
+| materials 文件名中文乱码 | ✅ 已修复 |
+
+---
+
 ## 总结
 
 wechat-oa v1.2.1 核心功能运行正常，5个主功能（list/find/materialcount/published/cover）全部通过，1个Bug（文件名乱码）不影响核心使用，建议后续版本修复。
