@@ -315,6 +315,240 @@ def parse_html_article(html_path):
     return title.strip(), body.strip(), style_content.strip()
 
 
+def parse_md_article(md_path):
+    """
+    解析 Markdown 文件，转换为带内联样式的 HTML。
+
+    支持的 Markdown 元素：
+      # / ## / ###       标题（h1 / h2 / h3）
+      **bold** / *italic* / `code`  行内格式
+      > blockquote         引用块
+      ---                  分隔线
+      - / * 无序列表       ul/li
+      1. 有序列表          ol/li
+      [text](url)          链接
+      ![alt](url)          图片（已脱敏，不生成 img 标签）
+
+    样式严格遵循 design.md 规范：clamp() 响应式字号、677px 容器宽度。
+    返回：(title, body, style_content)
+    """
+    with open(md_path, 'r', encoding='utf-8', errors='ignore') as f:
+        md = f.read()
+
+    # ── 1. 提取标题 ──────────────────────────────────────────────────────────
+    title = "无标题"
+    for m in re.finditer(r'^(#{1,3})\s+(.+)$', md, re.MULTILINE):
+        raw = m.group(2).strip()
+        raw = re.sub(r'\*\*(.+?)\*\*', r'\1', raw)  # 去掉粗体标记
+        raw = re.sub(r'\*(.+?)\*', r'\1', raw)        # 去掉斜体标记
+        raw = re.sub(r'`(.+?)`', r'\1', raw)          # 去掉代码标记
+        if raw:
+            title = raw
+            break
+
+    if len(title) > 64:
+        title = title[:64]
+
+    # ── 2. 预处理：代码块保护 ────────────────────────────────────────────────
+    # 用占位符保护 fenced code block 内容，防止转换逻辑误伤
+    code_blocks = []
+    def protect_code(m):
+        placeholder = f'\x00CODEBLOCK{len(code_blocks)}\x00'
+        code_blocks.append(m.group(0))
+        return placeholder
+
+    md = re.sub(r'```[\s\S]*?```', protect_code, md)       # fenced code block
+    md = re.sub(r'`([^`]+)`', protect_code, md)             # inline code
+
+    # ── 3. 预处理：表格行保护 ────────────────────────────────────────────────
+    table_rows = []
+    def protect_table(m):
+        placeholder = f'\x00TABLEROW{len(table_rows)}\x00'
+        table_rows.append(m.group(0))
+        return placeholder
+
+    md = re.sub(r'\|.+\|(\n\|[|:\- ]+\|)?', protect_table, md)
+
+    # ── 4. 转行：块级元素 ───────────────────────────────────────────────────
+    lines = md.split('\n')
+    html_lines = []
+    in_ul = False
+    in_ol = False
+
+    def _close_ul():
+        nonlocal in_ul
+        if in_ul:
+            html_lines.append('</ul>')
+            in_ul = False
+
+    def _close_ol():
+        nonlocal in_ol
+        if in_ol:
+            html_lines.append('</ol>')
+            in_ol = False
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        # 空行
+        if not stripped:
+            _close_ul()
+            _close_ol()
+            i += 1
+            continue
+
+        # 分隔线
+        if re.match(r'^(-{3,}|\*{3,}|_{3,})$', stripped):
+            _close_ul()
+            _close_ol()
+            html_lines.append('<hr>')
+            i += 1
+            continue
+
+        # 标题
+        hm = re.match(r'^(#{1,3})\s+(.+)$', stripped)
+        if hm:
+            _close_ul()
+            _close_ol()
+            level = len(hm.group(1))
+            inner = hm.group(2)
+            inner = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', inner)
+            inner = re.sub(r'\*(.+?)\*', r'<em>\1</em>', inner)
+            inner = re.sub(r'`([^`]+)`', r'<code>\1</code>', inner)
+            html_lines.append(f'<h{level}>{inner}</h{level}>')
+            i += 1
+            continue
+
+        # 无序列表项（- 或 * 开头）
+        li_m = re.match(r'^([-*+])\s+(.+)$', stripped)
+        if li_m:
+            if not in_ul:
+                _close_ol()
+                html_lines.append('<ul>')
+                in_ul = True
+            item = li_m.group(2)
+            item = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', item)
+            item = re.sub(r'\*(.+?)\*', r'<em>\1</em>', item)
+            item = re.sub(r'`([^`]+)`', r'<code>\1</code>', item)
+            html_lines.append(f'<li>{item}</li>')
+            i += 1
+            continue
+
+        # 有序列表项（1. 开头）
+        ol_m = re.match(r'^\d+\.\s+(.+)$', stripped)
+        if ol_m:
+            if not in_ol:
+                _close_ul()
+                html_lines.append('<ol>')
+                in_ol = True
+            item = ol_m.group(1)
+            item = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', item)
+            item = re.sub(r'\*(.+?)\*', r'<em>\1</em>', item)
+            item = re.sub(r'`([^`]+)`', r'<code>\1</code>', item)
+            html_lines.append(f'<li>{item}</li>')
+            i += 1
+            continue
+
+        # 引用块
+        if stripped.startswith('>'):
+            _close_ul()
+            _close_ol()
+            quote_content = stripped.lstrip('>').strip()
+            quote_content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', quote_content)
+            quote_content = re.sub(r'\*(.+?)\*', r'<em>\1</em>', quote_content)
+            quote_content = re.sub(r'`([^`]+)`', r'<code>\1</code>', quote_content)
+            html_lines.append(f'<blockquote><p>{quote_content}</p></blockquote>')
+            i += 1
+            continue
+
+        # 普通段落
+        _close_ul()
+        _close_ol()
+        para = stripped
+        para = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', para)
+        para = re.sub(r'\*(.+?)\*', r'<em>\1</em>', para)
+        para = re.sub(r'`([^`]+)`', r'<code>\1</code>', para)
+        para = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2">\1</a>', para)
+        para = re.sub(r'!\[([^\]]*)\]\([^\)]+\)', '', para)  # 去掉图片 markdown
+        html_lines.append(f'<p>{para}</p>')
+
+        i += 1
+
+    # 关闭未关闭的列表
+    _close_ul()
+    _close_ol()
+
+    body = '\n'.join(html_lines)
+
+    # ── 5. 恢复保护的内容 ───────────────────────────────────────────────────
+    for idx, block in enumerate(code_blocks):
+        body = body.replace(f'\x00CODEBLOCK{idx}\x00', block)
+
+    for idx, row in enumerate(table_rows):
+        # 简单表格还原为 HTML table
+        body = body.replace(f'\x00TABLEROW{idx}\x00', _render_table_row(row))
+
+    # ── 6. 组装 style（遵循 design.md） ─────────────────────────────────────
+    style_content = """
+.design-container { width: 677px; max-width: 100%; margin: 0 auto; box-sizing: border-box; background-color: #fff; }
+.content-container { padding: 0; margin: 0; }
+h1 { font-size: clamp(18px, 2vw, 20px); font-weight: bold; text-align: center; margin: 20px 0 14px; }
+h2 { font-size: clamp(17px, 1.8vw, 18px); font-weight: bold; margin: 18px 0 12px; }
+h3 { font-size: clamp(15px, 1.6vw, 16px); font-weight: bold; margin: 14px 0 10px; }
+p  { font-size: clamp(15px, 1.4vw, 16px); line-height: 1.8; margin: 8px 0; }
+strong { font-weight: bold; }
+em { font-style: italic; }
+code { background-color: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.9em; }
+blockquote { border-left: 4px solid #3498db; background-color: #f0f7ff; padding: 10px 16px; margin: 10px 0; }
+blockquote p { color: #555; margin: 0; font-size: clamp(14px, 1.3vw, 15px); }
+ul, ol { padding-left: 24px; margin: 8px 0; }
+li { font-size: clamp(15px, 1.4vw, 16px); line-height: 1.8; margin: 4px 0; }
+a { color: #3498db; text-decoration: none; }
+hr { border: none; border-top: 1px solid #e0e0e0; margin: 20px 0; }
+table { width: 100%; border-collapse: collapse; font-size: clamp(13px, 1.1vw, 14px); margin: 10px 0; }
+th { background-color: #d6eaf8; padding: 8px; text-align: left; }
+td { padding: 8px; border-bottom: 1px solid #eee; }
+""".strip()
+
+    return title.strip(), body.strip(), style_content
+
+
+def _render_table_row(md_row):
+    """将 Markdown 表格行（含分隔行）转为 HTML <table>"""
+    cells = [c.strip() for c in md_row.strip('|').split('|')]
+    if not cells:
+        return ''
+
+    # 判断是否为分隔行（只含 - : |）
+    if all(re.match(r'^[:\- ]+$', c) for c in cells):
+        return ''
+
+    is_header = not any(re.match(r'^[:\- ]+$', c) for c in cells)
+    tag = 'th' if is_header else 'td'
+    cols = ''.join(f'<{tag}>{c}</{tag}>' for c in cells)
+    return f'<tr>{cols}</tr>'
+
+
+def parse_file(file_path):
+    """
+    通用文件解析入口，自动识别后缀调用对应解析器。
+
+    支持：.html / .htm → HTML 解析器
+          .md / .markdown → Markdown 解析器
+
+    返回：(title, body, style_content)
+    """
+    suffix = Path(file_path).suffix.lower()
+    if suffix in ('.html', '.htm'):
+        return parse_html_article(file_path)
+    elif suffix in ('.md', '.markdown'):
+        return parse_md_article(file_path)
+    else:
+        raise ValueError(f"不支持的文件格式: {suffix}（仅支持 .html 和 .md）")
+
+
 def upload_image(access_token, image_path):
     """上传永久图片素材"""
     if not Path(image_path).exists():
@@ -612,7 +846,7 @@ def draft_create(html_path, force_cover=False):
         html_path: HTML 文件路径
         force_cover: 是否强制重新生成封面，默认 False（新建草稿无旧封面可复用）
     """
-    title, content, style_content = parse_html_article(html_path)
+    title, content, style_content = parse_file(html_path)
     print(f"[TITLE] {title}")
     print(f"[LENGTH] {len(content)} chars")
     if style_content:
@@ -669,7 +903,7 @@ def draft_update(media_id, html_path, force_cover=False):
         html_path: HTML 文件路径
         force_cover: 是否强制重新生成封面，默认 False（复用已有封面）
     """
-    title, content, style_content = parse_html_article(html_path)
+    title, content, style_content = parse_file(html_path)
     print(f"[TITLE] {title}")
     print(f"[LENGTH] {len(content)} chars")
     if style_content:
@@ -1128,8 +1362,8 @@ def print_usage():
 
 用法:
   python wechat_push.py list                          查看草稿列表（含标题+更新时间）
-  python wechat_push.py create <html文件>              创建新草稿
-  python wechat_push.py update <media_id> <html文件> [--force-cover]   更新已有草稿（默认复用封面）
+  python wechat_push.py create <文件路径>              创建新草稿（支持 .html 和 .md）
+  python wechat_push.py update <media_id> <文件路径> [--force-cover]   更新已有草稿（支持 .html 和 .md）
   python wechat_push.py delete <media_id>              删除草稿
   python wechat_push.py find <关键词>                  按标题关键词搜索草稿
   python wechat_push.py batch-del <id1> [id2] ...     批量删除草稿
@@ -1169,8 +1403,9 @@ def main():
 
         elif cmd == 'create':
             if len(args) < 2:
-                print("[ERROR] 请指定HTML文件路径")
-                print("用法: python wechat_push.py create <html文件> [--force-cover]")
+                print("[ERROR] 请指定文件路径（支持 .html 和 .md）")
+                print("用法: python wechat_push.py create <文件路径> [--force-cover]")
+                print("       支持: .html (直接推送) 或 .md (自动转HTML后推送)")
                 sys.exit(1)
             html_path = args[1]
             remaining = args[2:]
@@ -1179,8 +1414,9 @@ def main():
 
         elif cmd == 'update':
             if len(args) < 2:
-                print("[ERROR] 请指定 media_id 和 HTML文件路径")
-                print("用法: python wechat_push.py update <media_id> <html文件> [--force-cover]")
+                print("[ERROR] 请指定 media_id 和文件路径")
+                print("用法: python wechat_push.py update <media_id> <文件路径> [--force-cover]")
+                print("       支持: .html (直接推送) 或 .md (自动转HTML后推送)")
                 sys.exit(1)
             media_id = args[1]
             html_path = args[2] if len(args) > 2 else None
