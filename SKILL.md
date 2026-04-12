@@ -1,7 +1,7 @@
 ---
 name: wechat-oa
 description: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/按关键词找草稿/按标题搜/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/批量删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/已发布文章列表/公众号素材列表/素材管理/删除素材/交互式删除/批量删除素材/关键词过滤素材。官方API，无需第三方依赖。
-version: "1.2.1"
+version: "1.3.0"
 homepage: https://github.com/andy8663/wechat-oa
 metadata:
   openclaw:
@@ -22,6 +22,7 @@ WeChat Official Account draft management toolkit. Built on official WeChat APIs,
 - **公众号排版规范** / WeChat MP layout specification：内置 `design.md` 排版规范，AI 生成 HTML 时必须遵循，确保公众号渲染兼容 / Built-in `design.md` layout spec that AI must follow when generating HTML, ensuring WeChat rendering compatibility
 - **行内样式转换** / Inline-style conversion：自动将 HTML 中的 `<style>` 标签转换为行内 `style=""` 属性，兼容微信文章渲染（已固化到 skill） / Auto-converts `<style>` tags into inline `style=""` attributes for WeChat-compatible rendering (baked into this skill)
 - **自动封面生成** / Auto cover generation：根据文章标题 AI 生成科技风封面图（2.35:1 比例） / AI-generated tech-style cover image from article title (2.35:1 ratio)
+- **正文图片自动上传** / Auto inline image upload：自动提取 HTML/MD 中的本地图片，上传到微信素材库并替换 URL / Automatically extracts local images from HTML/MD, uploads to WeChat material library and replaces URLs
 - **智能摘要** / Smart digest：自动从正文中选取含功能关键词的段落作为摘要，而非机械截取前80字 / Intelligently selects keyword-rich paragraphs as digest instead of blindly truncating at 80 chars
 
 ## ⚠️ 排版规范（必读） / Layout Specification (MUST READ)
@@ -49,8 +50,8 @@ Before creating or updating any WeChat article, AI MUST read `design.md` and str
 |------|------|---------|
 | `list` | 查看草稿列表（含标题+时间）/ View draft list with title+time | `draft/batchget` |
 | `find <关键词>` | 按标题关键词搜索草稿 / Search drafts by title keyword | `draft/batchget` |
-| `create <文件>` | 创建新草稿（支持 .html 和 .md）/ Create draft from HTML or MD | `draft/add` + 永久素材上传 |
-| `update <media_id> <文件>` | 更新已有草稿 / Update existing draft | `draft/update` |
+| `create <文件>` | 创建新草稿（支持 .html 和 .md，自动上传正文配图）/ Create draft from HTML or MD (auto-upload inline images) | `draft/add` + 永久素材上传 |
+| `update <media_id> <文件>` | 更新已有草稿（自动上传正文配图）/ Update existing draft (auto-upload inline images) | `draft/update` |
 | `update <media_id> <文件> --force-cover` | 更新草稿并强制重新生成封面 / Update draft + force-regenerate cover | `draft/update` |
 | `delete <media_id>` | 删除草稿 / Delete draft | `draft/delete` |
 | `batch-del <id1> [id2] ...` | 批量删除草稿 / Batch delete drafts | `draft/delete` |
@@ -136,6 +137,70 @@ python wechat_push.py cover "你的文章标题"
 ```bash
 pip install requests Pillow
 ```
+
+## 正文配图说明 / Inline Images Guide
+
+### 自动上传流程 / Auto-upload Flow
+
+创建或更新草稿时，系统会自动处理正文中的图片：
+
+When creating or updating drafts, the system automatically processes inline images:
+
+```
+HTML/MD 文件
+    ↓
+提取 <img src="..."> 或 ![alt](path)
+    ↓
+本地图片？ ──是──→ 上传到微信素材库 ──→ 获取微信 URL
+    ↓ 否                    ↓
+网络图片？ ──是──→ 保留原 URL（可选下载上传）
+    ↓ 否
+跳过（已是微信素材库图片）
+    ↓
+替换 HTML 中的 src 为微信 URL
+    ↓
+推送草稿
+```
+
+### 支持的图片格式 / Supported Formats
+
+- **HTML**: `<img src="local/image.png">` 或 `<img src="http://example.com/img.png">`
+- **Markdown**: `![描述](./images/photo.jpg)`
+- **路径类型**: 相对路径、绝对路径、`file:///` 协议
+
+### 图片处理规则 / Image Processing Rules
+
+| 图片类型 | 处理方式 | 说明 |
+|---------|---------|------|
+| 本地图片（相对/绝对路径） | 自动上传 | 上传后替换为微信素材库 URL |
+| 网络图片（http/https） | 跳过 | 保留原 URL（微信可能过滤） |
+| 微信素材库图片 | 跳过 | 已是 `mmbiz.qpic.cn` 域名 |
+| 不存在的图片 | 报错提示 | 记录到失败列表，继续处理其他图片 |
+
+### 使用示例 / Examples
+
+```html
+<!-- HTML 示例：本地图片会被自动上传 -->
+<p>请看下图：</p>
+<img src="./images/diagram.png" alt="架构图">
+<img src="C:\Users\Photos\screenshot.jpg">
+
+<!-- 网络图片保留原样（微信可能过滤） -->
+<img src="https://example.com/external.png">
+```
+
+```markdown
+<!-- Markdown 示例 -->
+![本地图片](./assets/chart.png)  ← 自动上传
+![网络图片](https://site.com/img.jpg)  ← 保留原样
+```
+
+### 注意事项 / Notes
+
+1. **图片大小**: 建议单张 < 2MB，微信素材库有容量限制
+2. **图片格式**: 支持 JPG、PNG、GIF，推荐使用 PNG
+3. **路径问题**: 相对路径基于 HTML/MD 文件所在目录解析
+4. **失败处理**: 上传失败的图片会记录但不会影响草稿创建
 
 ## 输出文件 / Output Files
 

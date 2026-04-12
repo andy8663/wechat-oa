@@ -250,6 +250,130 @@ def get_access_token():
         raise Exception(f"获取token失败: {data}")
 
 
+def extract_and_upload_images(content: str, base_path: str, access_token: str) -> tuple:
+    """
+    提取 HTML 中的本地图片，上传到微信素材库，替换为微信 URL
+    
+    Args:
+        content: HTML 内容
+        base_path: HTML 文件所在目录（用于解析相对路径）
+        access_token: 微信接口凭证
+    
+    Returns:
+        (new_content, uploaded_count, failed_images)
+    """
+    # 匹配 <img src="..."> 标签
+    img_pattern = r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>'
+    
+    uploaded_count = 0
+    failed_images = []
+    url_mapping = {}  # 本地路径 -> 微信URL
+    
+    # 找出所有图片
+    img_matches = list(re.finditer(img_pattern, content, re.IGNORECASE))
+    
+    if not img_matches:
+        return content, 0, []
+    
+    print(f"[图片处理] 发现 {len(img_matches)} 张图片")
+    
+    for match in img_matches:
+        src = match.group(1)
+        
+        # 跳过已经是微信素材库的图片
+        if 'mmbiz.qpic.cn' in src or 'mp.weixin.qq.com' in src:
+            continue
+        
+        # 跳过网络图片（可选：也可以下载后上传）
+        if src.startswith('http://') or src.startswith('https://'):
+            print(f"  [SKIP] 网络图片: {src[:60]}...")
+            continue
+        
+        # 解析本地路径
+        if src.startswith('file:///'):
+            src = src[8:]  # Windows file:///
+        elif src.startswith('file://'):
+            src = src[7:]
+        
+        # 相对路径转绝对路径
+        if not os.path.isabs(src):
+            src = os.path.join(base_path, src)
+        
+        src = os.path.normpath(src)
+        
+        # 避免重复上传
+        if src in url_mapping:
+            continue
+        
+        # 检查文件存在
+        if not os.path.exists(src):
+            print(f"  [WARN] 图片不存在: {src}")
+            failed_images.append((src, "文件不存在"))
+            continue
+        
+        # 上传图片
+        try:
+            print(f"  [UPLOAD] {os.path.basename(src)} ...", end=' ')
+            media_id, url = _upload_image_for_content(src, access_token)
+            if url:
+                url_mapping[src] = url
+                uploaded_count += 1
+                print(f"OK (media_id: {media_id[:20]}...)")
+            else:
+                failed_images.append((src, "上传失败"))
+                print(f"FAILED")
+        except Exception as e:
+            failed_images.append((src, str(e)))
+            print(f"ERROR: {e}")
+    
+    # 替换 HTML 中的图片 URL
+    new_content = content
+    for local_path, wx_url in url_mapping.items():
+        # 处理各种可能的 src 格式
+        patterns = [
+            re.escape(local_path),
+            re.escape(local_path.replace('\\', '/')),
+            re.escape(local_path.replace('/', '\\')),
+        ]
+        # 也处理相对路径
+        rel_path = os.path.relpath(local_path, base_path)
+        patterns.extend([
+            re.escape(rel_path),
+            re.escape(rel_path.replace('\\', '/')),
+        ])
+        
+        for pattern in set(patterns):
+            new_content = re.sub(
+                r'(<img[^>]+src=["\'])' + pattern + r'(["\'][^>]*>)',
+                r'\1' + wx_url + r'\2',
+                new_content,
+                flags=re.IGNORECASE
+            )
+    
+    return new_content, uploaded_count, failed_images
+
+
+def _upload_image_for_content(image_path: str, access_token: str) -> tuple:
+    """
+    上传图片到微信素材库（用于正文配图）
+    
+    Returns:
+        (media_id, url)
+    """
+    url = f"{API_MATERIAL_ADD}?access_token={access_token}&type=image"
+    
+    with open(image_path, 'rb') as f:
+        files = {'media': (Path(image_path).name, f, 'image/png')}
+        resp = requests.post(url, files=files, timeout=60)
+    
+    data = resp.json()
+    
+    if "media_id" in data:
+        return data["media_id"], data.get("url", "")
+    else:
+        raise Exception(f"上传失败: {data}")
+
+
 def parse_html_article(html_path):
     """解析 HTML 文件，提取标题、正文和样式"""
     with open(html_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -855,6 +979,16 @@ def draft_create(html_path, force_cover=False):
 
     access_token = get_access_token()
 
+    # ★ 正文图片处理：提取本地图片并上传到微信素材库
+    base_path = os.path.dirname(os.path.abspath(html_path))
+    content, img_count, img_failed = extract_and_upload_images(content, base_path, access_token)
+    if img_count > 0:
+        print(f"[图片处理] 成功上传 {img_count} 张图片到素材库")
+    if img_failed:
+        print(f"[WARN] {len(img_failed)} 张图片上传失败:")
+        for path, err in img_failed:
+            print(f"  - {os.path.basename(path)}: {err}")
+
     # 封面：生成并上传到 skill 目录（避免中文路径），封面失败则报错退出
     thumb_media_id = generate_cover_and_upload(access_token, title, html_path)
     if not thumb_media_id:
@@ -912,6 +1046,16 @@ def draft_update(media_id, html_path, force_cover=False):
     print(f"[TARGET] 更新草稿: {media_id}")
 
     access_token = get_access_token()
+
+    # ★ 正文图片处理：提取本地图片并上传到微信素材库
+    base_path = os.path.dirname(os.path.abspath(html_path))
+    content, img_count, img_failed = extract_and_upload_images(content, base_path, access_token)
+    if img_count > 0:
+        print(f"[图片处理] 成功上传 {img_count} 张图片到素材库")
+    if img_failed:
+        print(f"[WARN] {len(img_failed)} 张图片上传失败:")
+        for path, err in img_failed:
+            print(f"  - {os.path.basename(path)}: {err}")
 
     # 封面逻辑：默认复用已有草稿封面，--force-cover 才重新生成
     if force_cover:
