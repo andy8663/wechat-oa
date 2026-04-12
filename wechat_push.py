@@ -1168,13 +1168,14 @@ def material_count():
     return data
 
 
-def material_list(mtype="image", count=20, offset=0):
+def material_list(mtype="image", count=20, offset=0, keyword=None):
     """批量获取永久素材列表
 
     Args:
         mtype: 素材类型，支持 image / video / voice / news
         count: 每页数量，默认20
         offset: 偏移量，默认0
+        keyword: 关键词过滤（匹配名称或标题），默认 None 不过滤
     """
     access_token = get_access_token()
     url = f"{API_MATERIAL_BATCHGET}?access_token={access_token}"
@@ -1195,10 +1196,31 @@ def material_list(mtype="image", count=20, offset=0):
     items = data.get("item", [])
     total = data.get("total_count", 0)
 
+    # 关键词过滤
+    if keyword:
+        kw = keyword.lower()
+        filtered = []
+        for item in items:
+            if mtype == "image":
+                name = item.get("name", "").lower()
+                if kw in name:
+                    filtered.append(item)
+            elif mtype == "news":
+                articles = item.get("content", {}).get("news_item", [])
+                title = articles[0].get("title", "").lower() if articles else ""
+                if kw in title:
+                    filtered.append(item)
+            else:
+                name = item.get("name", "").lower()
+                if kw in name:
+                    filtered.append(item)
+        items = filtered
+
     type_label = {"image": "图片", "video": "视频", "voice": "语音", "news": "图文"}
     label = type_label.get(mtype, mtype)
+    kw_note = f"（关键词「{keyword}」过滤后）" if keyword else ""
 
-    print(f"\n[永久素材列表] 类型:{label}  共{total}个 (显示{len(items)}个):\n")
+    print(f"\n[永久素材列表] 类型:{label}  共{total}个{kw_note} (显示{len(items)}个):\n")
     for i, item in enumerate(items):
         media_id = item.get("media_id", "N/A")
         update_time = datetime.fromtimestamp(item.get("update_time", 0)).strftime("%Y-%m-%d %H:%M")
@@ -1222,6 +1244,113 @@ def material_list(mtype="image", count=20, offset=0):
                 print(f"  [{i+1}] {title}  |  {update_time}  |  {media_id}")
         print()
     return items
+
+
+def material_del_interactive(mtype="image"):
+    """交互式删除永久素材：列出素材 → 用户输入编号 → 删除
+
+    Args:
+        mtype: 默认素材类型
+    """
+    print(f"\n=== 交互式删除素材 ===")
+    print("先列出素材，再输入要删除的编号（多个用空格分隔，如 1 3 5）")
+    print("输入 q 退出\n")
+
+    # 列出素材
+    items = material_list(mtype=mtype, count=20, offset=0)
+
+    if not items:
+        print("没有找到素材，退出。")
+        return
+
+    # 选类型（如果只想查一类，可以切换）
+    print(f"当前类型: {mtype}，可输入 t 切换类型(image/video/voice/news)，r 刷新列表")
+    print()
+
+    while True:
+        choice = input("请输入要删除的编号（多个空格分隔，q 退出）: ").strip()
+        if choice.lower() == 'q':
+            print("已退出。")
+            return
+        if choice.lower() == 't':
+            mtype = input("输入类型 (image/video/voice/news): ").strip()
+            items = material_list(mtype=mtype, count=20, offset=0)
+            print()
+            continue
+        if choice.lower() == 'r':
+            items = material_list(mtype=mtype, count=20, offset=0)
+            print()
+            continue
+
+        # 解析编号
+        numbers = []
+        for part in choice.split():
+            try:
+                n = int(part)
+                if 1 <= n <= len(items):
+                    numbers.append(n)
+                else:
+                    print(f"  警告：编号 {n} 超出范围 (1-{len(items)})，跳过")
+            except ValueError:
+                print(f"  警告：'{part}' 不是有效数字，跳过")
+
+        if not numbers:
+            print("没有有效编号，请重试\n")
+            continue
+
+        # 确认
+        print()
+        for n in numbers:
+            item = items[n - 1]
+            media_id = item.get("media_id", "")
+            if mtype == "news":
+                title = item.get("content", {}).get("news_item", [{}])[0].get("title", "无标题")
+            elif mtype == "image":
+                title = item.get("name", media_id)
+            else:
+                title = item.get("name", media_id)
+            print(f"  将删除 [{n}]: {title}")
+
+        confirm = input("\n确认删除以上素材？(y/N): ").strip().lower()
+        if confirm != 'y':
+            print("已取消。\n")
+            continue
+
+        # 执行删除
+        print()
+        success = 0
+        fail = 0
+        for n in numbers:
+            item = items[n - 1]
+            media_id = item.get("media_id", "")
+            try:
+                _do_del_material(media_id)
+                success += 1
+            except Exception as e:
+                print(f"  删除失败 {media_id}: {e}")
+                fail += 1
+
+        print(f"\n删除完成：成功 {success} 个，失败 {fail} 个")
+
+        # 继续删除还是退出
+        again = input("继续删除？(y/N): ").strip().lower()
+        if again != 'y':
+            return
+        items = material_list(mtype=mtype, count=20, offset=0)
+        print()
+
+
+def _do_del_material(media_id):
+    """真正执行删除接口调用"""
+    access_token = get_access_token()
+    url = f"{API_MATERIAL_DEL}?access_token={access_token}"
+    json_data = json.dumps({"media_id": media_id}, ensure_ascii=False).encode('utf-8')
+    resp = requests.post(url, data=json_data, headers={'Content-Type': 'application/json; charset=utf-8'}, timeout=30)
+    data = resp.json()
+    if data.get("errcode") == 0:
+        print(f"  [OK] 已删除: {media_id}")
+    else:
+        raise Exception(f"errcode={data.get('errcode')}, errmsg={data.get('errmsg')}")
 
 
 def errwrap_get(url):
@@ -1368,10 +1497,12 @@ def print_usage():
   python wechat_push.py find <关键词>                  按标题关键词搜索草稿
   python wechat_push.py batch-del <id1> [id2] ...     批量删除草稿
   python wechat_push.py upload <图片文件>              上传永久素材（图片）
-  python wechat_push.py materialcount                  获取永久素材总数统计
-  python wechat_push.py materials [type] [count] [offset]  批量获取永久素材列表
-                                                          type: image/video/voice/news，默认 image
-  python wechat_push.py materialdel <media_id>         删除永久素材
+  python wechat_push.py materialcount                                    获取永久素材总数统计
+  python wechat_push.py materials [type] [count] [offset] [keyword]     批量获取素材列表（支持关键词过滤）
+                                                                          type: image/video/voice/news，默认 image
+  python wechat_push.py materialdel [media_id1] [media_id2] ...           批量删除素材（多个空格分隔）
+  python wechat_push.py materialdel                                         交互式删除（默认从图文素材开始）
+  python wechat_push.py materialdel <news|image|video|voice>              交互式删除指定类型素材
   python wechat_push.py userstat [天数]               获取用户增减数据（默认近7天）
   python wechat_push.py userstat <begin> <end>         指定日期范围查询
   python wechat_push.py userinfo <openid>              获取用户基本信息
@@ -1385,6 +1516,10 @@ def print_usage():
   python wechat_push.py materialcount
   python wechat_push.py materials image 20 0
   python wechat_push.py materials news 10 0
+  python wechat_push.py materials news 20 0 多Agent
+  python wechat_push.py materialdel
+  python wechat_push.py materialdel news image 20
+  python wechat_push.py materialdel media_id_xxx media_id_yyy
 """)
 
 
@@ -1466,28 +1601,45 @@ def main():
             material_count()
 
         elif cmd == 'materials':
-            # 解析: materials [type] [count] [offset]
+            # 解析: materials [type] [count] [offset] [keyword]
             mtype = "image"
             count = 20
             offset = 0
+            keyword = None
             if len(args) >= 2:
                 mtype = args[1]
             if len(args) >= 3:
                 count = int(args[2])
             if len(args) >= 4:
                 offset = int(args[3])
-            material_list(mtype, count, offset)
+            if len(args) >= 5:
+                keyword = args[4]
+            material_list(mtype, count, offset, keyword=keyword)
 
         elif cmd == 'materialdel':
+            # 解析: materialdel [media_id1] [media_id2] ...
+            #       不带参数 → 交互式删除（从图文素材开始）
+            #       一个短参数(如 news) → 交互式删除该类型（微信 media_id 通常 > 20 字符）
             if len(args) < 2:
-                print("[ERROR] 请指定 media_id")
-                print("用法: python wechat_push.py materialdel <media_id>")
-                sys.exit(1)
-            access_token = get_access_token()
-            url = f"{API_MATERIAL_DEL}?access_token={access_token}"
-            json_data = json.dumps({"media_id": args[1]}, ensure_ascii=False).encode('utf-8')
-            resp = requests.post(url, data=json_data, headers={'Content-Type': 'application/json; charset=utf-8'}, timeout=30)
-            data = resp.json()
+                material_del_interactive(mtype="news")
+                return
+            if len(args) == 2 and len(args[1]) < 20:
+                # 短参数当类型名处理
+                material_del_interactive(mtype=args[1].lower())
+                return
+            # 单个或多个 media_id 直接删除
+            media_ids = args[1:]
+            print(f"\n[批量删除] 共 {len(media_ids)} 个素材：")
+            success = 0
+            fail = 0
+            for mid in media_ids:
+                try:
+                    _do_del_material(mid)
+                    success += 1
+                except Exception as e:
+                    print(f"  删除失败 {mid}: {e}")
+                    fail += 1
+            print(f"\n完成：成功 {success} 个，失败 {fail} 个")
             if data.get("errcode") == 0:
                 print(f"[OK] 永久素材已删除: {args[1]}")
             else:
