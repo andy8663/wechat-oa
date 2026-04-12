@@ -1,6 +1,6 @@
 ---
 name: wechat-oa
-description: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/按关键词找草稿/按标题搜/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/批量删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/已发布文章列表/公众号素材列表。官方API，无需第三方依赖。
+description: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/按关键词找草稿/按标题搜/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/批量删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/已发布文章列表/公众号素材列表/素材管理/删除素材/交互式删除/批量删除素材/关键词过滤素材。官方API，无需第三方依赖。
 version: "1.2.1"
 homepage: https://github.com/andy8663/wechat-oa
 metadata:
@@ -49,15 +49,17 @@ Before creating or updating any WeChat article, AI MUST read `design.md` and str
 |------|------|---------|
 | `list` | 查看草稿列表（含标题+时间）/ View draft list with title+time | `draft/batchget` |
 | `find <关键词>` | 按标题关键词搜索草稿 / Search drafts by title keyword | `draft/batchget` |
-| `create <html>` | 创建新草稿（自动生成封面）/ Create new draft (auto-generate cover) | `draft/add` + 永久素材上传 |
-| `update <media_id> <html>` | 更新已有草稿 / Update existing draft | `draft/update` |
-| `update <media_id> <html> --force-cover` | 更新草稿并强制重新生成封面 / Update draft + force-regenerate cover | `draft/update` |
+| `create <文件>` | 创建新草稿（支持 .html 和 .md）/ Create draft from HTML or MD | `draft/add` + 永久素材上传 |
+| `update <media_id> <文件>` | 更新已有草稿 / Update existing draft | `draft/update` |
+| `update <media_id> <文件> --force-cover` | 更新草稿并强制重新生成封面 / Update draft + force-regenerate cover | `draft/update` |
 | `delete <media_id>` | 删除草稿 / Delete draft | `draft/delete` |
 | `batch-del <id1> [id2] ...` | 批量删除草稿 / Batch delete drafts | `draft/delete` |
 | `upload <图片文件>` | 上传图片到永久素材库 / Upload image to permanent material | `material/add_material` |
 | `materialcount` | 获取各类永久素材总数 / Get permanent material count by type | `material/get_materialcount` |
-| `materials [type] [count] [offset]` | 批量获取永久素材列表 / Batch list permanent materials | `material/batchget_material` |
-| `materialdel <media_id>` | 删除永久素材 / Delete permanent material | `material/del_material` |
+| `materials [type] [count] [offset] [keyword]` | 批量获取素材列表，支持关键词过滤 / Batch list with keyword filter | `material/batchget_material` |
+| `materialdel [media_id...]` | 批量删除素材（多个空格分隔）/ Batch delete materials | `material/del_material` |
+| `materialdel` | 交互式删除（列出→选编号→确认）/ Interactive material deletion | `material/del_material` |
+| `materialdel <type>` | 交互式删除指定类型 / Interactive deletion by type (news/image/video/voice) | `material/del_material` |
 | `published` | 获取已发布文章列表 / List published articles | `material/batchget_material` |
 | `cover <标题>` | 生成封面图预览（不推送）/ Generate cover preview (no push) | PIL local generation |
 | `userinfo <openid>` | 获取用户基本信息（需认证账号）/ Get user info by openid | `user/info` |
