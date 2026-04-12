@@ -596,7 +596,10 @@ def parse_md_article(md_path):
         para = re.sub(r'\*(.+?)\*', r'<em>\1</em>', para)
         para = re.sub(r'`([^`]+)`', r'<code>\1</code>', para)
         para = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2">\1</a>', para)
-        para = re.sub(r'!\[([^\]]*)\]\([^\)]+\)', '', para)  # 去掉图片 markdown
+        # ★ 修改：保留 MD 图片语法，让 extract_and_upload_images 处理
+        # 原: para = re.sub(r'!\[([^\]]*)\]\(([^\)]+)\)', '', para)  # 去掉图片 markdown
+        # 现改为保留图片路径，供后续上传处理
+        para = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', r'<img alt="\1" src="\2" style="max-width:100%;">', para)
         html_lines.append(f'<p>{para}</p>')
 
         i += 1
