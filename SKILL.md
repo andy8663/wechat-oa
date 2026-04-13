@@ -215,5 +215,7 @@ HTML/MD 文件
   - 提交 Bug 报告或功能请求 / Submit bug reports or feature requests
 - 📧 **邮箱**：`andy8663@126.com`
   - 邮件咨询 / Email for inquiries
+- 🔔 **微信公众号**：技术定义未来（ID: `gh_b906288c4c2f`）
+  - 公众号文章首发平台 / Primary publishing platform for MP articles
 
 > 💡 提交 Issue 前建议先搜索是否已有类似问题 / Please search existing issues before submitting new ones.

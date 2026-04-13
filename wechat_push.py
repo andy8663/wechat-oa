@@ -431,10 +431,9 @@ def parse_html_article(html_path):
     body = re.sub(r'<ul[^>]*>\s*\n\s*<li', lambda m: m.group(0).replace('\n', '').replace('  ', ''), body, flags=re.IGNORECASE)
     body = re.sub(r'<ol[^>]*>\s*\n\s*<li', lambda m: m.group(0).replace('\n', '').replace('  ', ''), body, flags=re.IGNORECASE)
 
-    # 清理所有多余空白：多个空格/换行合并为一个
-    body = re.sub(r'[ \t]+', ' ', body)       # 多余空格
+    # 清理所有多余空白：连续换行合并 + 标签间多余空行
+    # 注意：不压缩 [ \t]+ 为单个空格，因为会破坏 CSS 样式中的属性值
     body = re.sub(r'\n{2,}', '\n', body)        # 连续换行合并
-    body = re.sub(r' *\n *', '\n', body)       # 每行首尾空格
     body = re.sub(r'>\n+<', '><', body)        # 标签间多余空行
 
     return title.strip(), body.strip(), style_content.strip()
