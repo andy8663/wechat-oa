@@ -1,6 +1,6 @@
 # wechat-oa
 
-微信公众号草稿箱管理工具集。基于官方微信 API，无需第三方依赖。
+**微信公众号「技术定义未来」官方工具** · 基于官方微信 API，无需第三方依赖
 
 English: A WeChat Official Account draft management toolkit based on the official WeChat API. No third-party dependencies required.
 
@@ -13,6 +13,16 @@ English: A WeChat Official Account draft management toolkit based on the officia
 - 🔄 更新已有草稿 / Update existing drafts
 - 🗑️ 删除草稿 / Delete drafts
 - 🖼️ 独立生成封面图预览 / Generate cover image preview independently
+
+---
+
+## 配套公众号 Companion Account
+
+本工具由公众号 **「技术定义未来」** 配套开发，用于高效管理公众号草稿箱。
+
+- 📢 公众号：技术定义未来
+- 🔍 定位：AI工具效率提升 + AI商业化场景探索
+- 🔗 关注方式：微信搜索「技术定义未来」或扫描下方二维码
 
 ---
 
