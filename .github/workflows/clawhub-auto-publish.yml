@@ -26,5 +26,8 @@ jobs:
           # 1. 修复登录命令
           clawhub login --token ${CLAWHUB_TOKEN} --no-browser
           
-          # 2. 同步技能（根目录需要有 skill.json）
-          clawhub sync --root ./ --all --bump patch --changelog "Auto update from GitHub"
+          # 2. 同步技能--bump patch  自动升级版本号（不用你手动改）
+          # patch → 小版本 1.0.1 → 1.0.2（推荐）
+          # minor → 中版本 1.0.0 → 1.1.0
+          # major → 大版本 1.0.0 → 2.0.0
+          clawhub sync --root ./ --all --bump minor --changelog "Auto update from GitHub"
