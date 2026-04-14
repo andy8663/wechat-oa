@@ -619,7 +619,7 @@ def parse_md_article(md_path):
 
     # ── 6. 组装 style（遵循 design.md） ─────────────────────────────────────
     style_content = """
-.design-container { width: 677px; max-width: 100%; margin: 0 auto; box-sizing: border-box; background-color: #fff; }
+.design-container { width: 677px; max-width: 100%; margin: 0 auto; box-sizing: border-box; }
 .content-container { padding: 0; margin: 0; }
 h1 { font-size: clamp(18px, 2vw, 20px); font-weight: bold; text-align: center; margin: 20px 0 14px; }
 h2 { font-size: clamp(17px, 1.8vw, 18px); font-weight: bold; margin: 18px 0 12px; }
@@ -917,6 +917,41 @@ def _extract_digest(content, max_len=80):
     return best
 
 
+def _strip_container_box_styles(content):
+    """
+    去除外层容器的"卡片"样式（白底+阴影+圆角），避免正文被框在大方框内。
+    针对第一个 div/section/article 容器进行处理。
+    """
+    # 匹配第一个容器标签的 style 属性
+    def strip_box_styles(match):
+        tag = match.group(1)
+        attrs_before = match.group(2) or ''
+        style = match.group(3) or ''
+        attrs_after = match.group(4) or ''
+        
+        # 去除卡片式样式
+        style = re.sub(r'background(?:-color)?\s*:\s*[^;]+;?', '', style, flags=re.IGNORECASE)
+        style = re.sub(r'box-shadow\s*:\s*[^;]+;?', '', style, flags=re.IGNORECASE)
+        style = re.sub(r'border-radius\s*:\s*[^;]+;?', '', style, flags=re.IGNORECASE)
+        style = re.sub(r'border\s*:\s*[^;]+;?', '', style, flags=re.IGNORECASE)
+        style = style.strip().strip(';')
+        
+        if style:
+            return f'<{tag}{attrs_before} style="{style}"{attrs_after}>'
+        else:
+            # 移除空 style 属性
+            return f'<{tag}{attrs_before}{attrs_after}>'
+    
+    # 只处理第一个匹配的容器标签
+    content = re.sub(
+        r'<(div|section|article|main)([^>]*)\s+style=["\']([^"\']*)["\']([^>]*)>',
+        strip_box_styles,
+        content,
+        count=1,
+        flags=re.IGNORECASE
+    )
+    return content
+
 
 def build_article(title, content, thumb_media_id, style_content="", author=None):
     """构建图文消息数据"""
@@ -934,6 +969,9 @@ def build_article(title, content, thumb_media_id, style_content="", author=None)
     body_match = re.search(r'<body[^>]*>(.*?)</body>', content, re.IGNORECASE | re.DOTALL)
     if body_match:
         content = body_match.group(1)
+
+    # 去除外层容器的卡片样式（白底+阴影+圆角），避免正文被框在大方框内
+    content = _strip_container_box_styles(content)
 
     # 清理 premailer 产生的标签间换行和多余空格
     # 修复列表项之间的空白
