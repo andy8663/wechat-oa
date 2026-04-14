@@ -27,4 +27,4 @@ jobs:
           clawhub login --token ${CLAWHUB_TOKEN} --no-browser
           
           # 2. 同步技能（根目录需要有 skill.json）
-          clawhub sync ./ --all --bump patch --changelog "Auto update from GitHub"
+          clawhub sync --root ./ --all --bump patch --changelog "Auto update from GitHub"
