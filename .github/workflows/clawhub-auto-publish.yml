@@ -1,8 +1,8 @@
 name: Auto Sync to ClawHub
 on:
   push:
-    branches: [ main ]  # 监听 main 分支推送
-  workflow_dispatch:    # 允许手动触发
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 拉取完整历史（用于版本判断）
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -22,15 +22,7 @@ jobs:
 
       - name: Publish / Sync to ClawHub
         env:
-          # 👇 必须在 GitHub 仓库 Secrets 里添加 CLAWHUB_TOKEN
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
         run: |
-          # 1. 登录
-          clawhub login --token ${CLAWHUB_TOKEN}
-
-          # 2. 自动同步并发布（推荐：自动打补丁版本）
-          # 格式：clawhub sync <技能目录> --slug <你的技能slug> --bump patch
-          clawhub sync ./ --slug wechat-oa --bump patch --changelog "Auto-update from GitHub"
-
-          # 或 手动指定版本发布（二选一）
-          # clawhub publish ./ --slug your-skill-slug --version 1.0.${{ github.run_number }} --changelog "Auto build"
+          clawhub login --token ${CLAWWHUB_TOKEN}
+          clawhub sync ./ --bump patch --changelog "Auto-update from GitHub" --all
