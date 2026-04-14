@@ -9,8 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -20,9 +18,13 @@ jobs:
       - name: Install clawhub CLI
         run: npm install -g clawhub
 
-      - name: Publish / Sync to ClawHub
+      - name: Publish to ClawHub
         env:
+          # 这里必须正确！
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
         run: |
-          clawhub login --token ${CLAWWHUB_TOKEN}
-          clawhub sync ./ --bump patch --changelog "Auto-update from GitHub" --all
+          # 1. 修复登录命令
+          clawhub login --token ${CLAWHUB_TOKEN} --no-browser
+          
+          # 2. 同步技能（根目录需要有 skill.json）
+          clawhub sync ./ --all --bump patch --changelog "Auto update from GitHub"
