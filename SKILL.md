@@ -1,7 +1,11 @@
 ---
 name: wechat-oa
-description: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/按关键词找草稿/按标题搜/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/批量删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/已发布文章列表/公众号素材列表/素材管理/删除素材/交互式删除/批量删除素材/关键词过滤素材。官方API，无需第三方依赖。
-version: "1.3.0"
+description: WeChat Official Account draft management toolkit. Trigger words: 看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/生成封面图/上传图片/生成配图. Official API, no third-party dependencies.
+description_zh: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/按关键词找草稿/按标题搜/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/批量删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/已发布文章列表/公众号素材列表/素材管理/删除素材/交互式删除/批量删除素材/关键词过滤素材/生成配图/生成信息图。官方API，无需第三方依赖。
+version: "1.4.0"
+author: Woody
+email: andy8663@163.com
+wechat_mp: 用技术定义未来
 homepage: https://github.com/andy8663/wechat-oa
 metadata:
   openclaw:
@@ -9,6 +13,14 @@ metadata:
     category: "publishing"
     requires:
       bins: ["python3"]
+    voice_commands:
+      - "查看草稿箱"
+      - "看看公众号草稿"
+      - "创建一篇公众号文章"
+      - "推送文章到公众号"
+      - "生成封面图"
+      - "上传图片到素材库"
+      - "生成正文配图"
 ---
 
 # wechat-oa
@@ -63,6 +75,7 @@ Before creating or updating any WeChat article, AI MUST read `design.md` and str
 | `materialdel <type>` | 交互式删除指定类型 / Interactive deletion by type (news/image/video/voice) | `material/del_material` |
 | `published` | 获取已发布文章列表 / List published articles | `material/batchget_material` |
 | `cover <标题>` | 生成封面图预览（不推送）/ Generate cover preview (no push) | PIL local generation |
+| `infographic <类型> <输出路径> [参数]` | 生成正文配图（流程图/对比图/时间线/文字卡片/统计图）/ Generate inline image (steps/comparison/timeline/textcard/stats) | PIL local generation |
 | `userinfo <openid>` | 获取用户基本信息（需认证账号）/ Get user info by openid | `user/info` |
 | `userlist [next_openid]` | 获取用户列表（需认证账号）/ List all users | `user/get` |
 
@@ -130,6 +143,13 @@ python wechat_push.py upload cover.png
 
 # 生成封面图预览（不推送到微信）/ Generate cover preview (no WeChat push)
 python wechat_push.py cover "你的文章标题"
+
+# 生成正文配图 / Generate inline infographic
+python generate_infographic.py steps output/step.png "步骤1" "步骤2" "步骤3"
+python generate_infographic.py comparison output/compare.png "优点:很好用" "缺点:有点贵"
+python generate_infographic.py timeline output/timeline.png "2024:事件1" "2025:事件2"
+python generate_infographic.py textcard output/quote.png "天下没有难汇的款"
+python generate_infographic.py stats output/stats.png "满意度:85" "便利性:90"
 ```
 
 ## 依赖 / Dependencies
@@ -201,6 +221,61 @@ HTML/MD 文件
 2. **图片格式**: 支持 JPG、PNG、GIF，推荐使用 PNG
 3. **路径问题**: 相对路径基于 HTML/MD 文件所在目录解析
 4. **失败处理**: 上传失败的图片会记录但不会影响草稿创建
+
+## 正文配图自动生成 / Auto Infographic Generation
+
+### 功能说明
+
+`generate_infographic.py` 可以根据章节内容自动生成配图，无需 AI API，完全本地 PIL 生成。
+
+### 支持的配图类型
+
+| 类型 | 用途 | 示例 |
+|------|------|------|
+| `steps` | 流程图 | 汇款步骤：注册→填表→汇款→完成 |
+| `comparison` | 对比图 | 传统汇款 vs 西联汇款 |
+| `timeline` | 时间线 | 2020→2022→2024 发展历程 |
+| `textcard` | 文字卡片 | 金句、要点提炼 |
+| `stats` | 数据统计图 | 各渠道手续费对比 |
+
+### 使用方式
+
+```bash
+# 流程图（步骤流程）
+python generate_infographic.py steps output/step.png "注册西联账号" "填写汇款信息" "完成汇款" "通知收款人"
+
+# 对比图（两列对比）
+python generate_infographic.py comparison output/compare.png "传统银行:3-5个工作日" "西联:几分钟到账"
+
+# 时间线
+python generate_infographic.py timeline output/timeline.png "2020:全球扩张" "2022:数字化转型" "2024:移动端上线"
+
+# 文字卡片（金句/要点）
+python generate_infographic.py textcard output/quote.png "天下没有难汇的款"
+
+# 数据统计
+python generate_infographic.py stats output/stats.png "手续费:最低" "到账速度:最快" "覆盖范围:最广"
+```
+
+### 配图插入文章流程
+
+1. **生成配图**: 运行 `generate_infographic.py` 生成图片
+2. **插入 HTML**: 在章节末尾添加 `<img src="配图路径">`
+3. **推送**: 运行 `python wechat_push.py create article.html`
+4. **自动上传**: 系统自动将本地图片上传到素材库
+
+```html
+<h2>三、汇款流程</h2>
+<p>以下是完整的汇款步骤：</p>
+<img src="./images/remit-steps.png" alt="汇款流程图">  <!-- 自动上传 -->
+```
+
+### 配图尺寸
+
+- **宽度**: 677px（与公众号内容宽度一致）
+- **高度**: 根据内容自动计算
+- **格式**: PNG（透明背景支持）
+- **字体**: Windows 微软雅黑 / 黑体
 
 ## 输出文件 / Output Files
 

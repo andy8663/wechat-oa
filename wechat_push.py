@@ -253,64 +253,72 @@ def get_access_token():
 def extract_and_upload_images(content: str, base_path: str, access_token: str) -> tuple:
     """
     提取 HTML 中的本地图片，上传到微信素材库，替换为微信 URL
-    
+
     Args:
         content: HTML 内容
         base_path: HTML 文件所在目录（用于解析相对路径）
         access_token: 微信接口凭证
-    
+
     Returns:
         (new_content, uploaded_count, failed_images)
     """
-    # 匹配 <img src="..."> 标签
-    img_pattern = r'<img[^>]+src=["\']([^"\']+)["\'][^>]*>'
-    
+    # 匹配 <img ... src="..." ...> 标签（src 可在任意位置）
+    img_pattern = r'<img[^>]*\bsrc=["\']([^"\']+)["\'][^>]*>'
+
     uploaded_count = 0
     failed_images = []
     url_mapping = {}  # 本地路径 -> 微信URL
-    
+
+    # 预处理：统一 HTML 中的路径格式（将 HTML 中的双反斜杠 \\ 转为单反斜杠 \）
+    # 这确保各种格式的 src 路径（"C:\\..."、"C:\..."、"C:/..."）都能被正确处理
+    content = re.sub(
+        r'(<img[^>]*\bsrc=["\'])([^"\']*\\\\[^"\']*)(["\'][^>]*>)',
+        lambda m: m.group(1) + m.group(2).replace('\\\\', '\\') + m.group(3),
+        content
+    )
+
     # 找出所有图片
     img_matches = list(re.finditer(img_pattern, content, re.IGNORECASE))
-    
+
     if not img_matches:
         return content, 0, []
-    
+
     print(f"[图片处理] 发现 {len(img_matches)} 张图片")
-    
+
     for match in img_matches:
         src = match.group(1)
-        
+
         # 跳过已经是微信素材库的图片
         if 'mmbiz.qpic.cn' in src or 'mp.weixin.qq.com' in src:
             continue
-        
+
         # 跳过网络图片（可选：也可以下载后上传）
         if src.startswith('http://') or src.startswith('https://'):
             print(f"  [SKIP] 网络图片: {src[:60]}...")
             continue
-        
+
         # 解析本地路径
         if src.startswith('file:///'):
             src = src[8:]  # Windows file:///
         elif src.startswith('file://'):
             src = src[7:]
-        
+
         # 相对路径转绝对路径
         if not os.path.isabs(src):
             src = os.path.join(base_path, src)
-        
+
         src = os.path.normpath(src)
-        
+
         # 避免重复上传
         if src in url_mapping:
             continue
-        
+
         # 检查文件存在
         if not os.path.exists(src):
             print(f"  [WARN] 图片不存在: {src}")
             failed_images.append((src, "文件不存在"))
             continue
-        
+
         # 上传图片
         try:
             print(f"  [UPLOAD] {os.path.basename(src)} ...", end=' ')
@@ -325,7 +333,7 @@ def extract_and_upload_images(content: str, base_path: str, access_token: str) -
         except Exception as e:
             failed_images.append((src, str(e)))
             print(f"ERROR: {e}")
-    
+
     # 替换 HTML 中的图片 URL
     new_content = content
     for local_path, wx_url in url_mapping.items():
@@ -334,40 +342,44 @@ def extract_and_upload_images(content: str, base_path: str, access_token: str) -
             re.escape(local_path),
             re.escape(local_path.replace('\\', '/')),
             re.escape(local_path.replace('/', '\\')),
+            re.escape(local_path.replace('\\', '\\\\')),   # HTML 中的双反斜杠（C:\\...）
         ]
-        # 也处理相对路径
+        # 也处理相对路径（带和不带 ./ 前缀）
         rel_path = os.path.relpath(local_path, base_path)
         patterns.extend([
             re.escape(rel_path),
             re.escape(rel_path.replace('\\', '/')),
+            re.escape('./' + rel_path.replace('\\', '/')),  # ./TMP/xxx.png
+            re.escape('./' + rel_path.replace('\\', '/').lstrip('./')),  # 兼容已有 ./
         ])
-        
+
         for pattern in set(patterns):
+            # src 可在 img 标签内任意位置
             new_content = re.sub(
-                r'(<img[^>]+src=["\'])' + pattern + r'(["\'][^>]*>)',
+                r'(<img[^>]*src=["\'])' + pattern + r'(["\'][^>]*>)',
                 r'\1' + wx_url + r'\2',
                 new_content,
                 flags=re.IGNORECASE
             )
-    
+
     return new_content, uploaded_count, failed_images
 
 
 def _upload_image_for_content(image_path: str, access_token: str) -> tuple:
     """
     上传图片到微信素材库（用于正文配图）
-    
+
     Returns:
         (media_id, url)
     """
     url = f"{API_MATERIAL_ADD}?access_token={access_token}&type=image"
-    
+
     with open(image_path, 'rb') as f:
         files = {'media': (Path(image_path).name, f, 'image/png')}
         resp = requests.post(url, files=files, timeout=60)
-    
+
     data = resp.json()
-    
+
     if "media_id" in data:
         return data["media_id"], data.get("url", "")
     else:
@@ -396,7 +408,7 @@ def parse_html_article(html_path):
                 break
 
     # 微信公众号标题限制：最多64个字符（实测上限，65字符会报 title size out of limit）
-    # 原文：最多64字节（约32个中文字符）——错误，微信按字符计，非字节
+    # 原文：最多64字节（约32个中文字符）--错误，微信按字符计，非字节
     if len(title) > 64:
         title = title[:64]
 
@@ -733,7 +745,7 @@ def css_to_inline(html):
     """
     将 HTML 中 <style> 标签内的 CSS 规则转换为行内样式。
     微信会过滤 <style> 标签，此函数确保样式在行内生效。
-    
+
     优先使用 premailer 库（如果已安装），否则使用原生实现。
     """
     if HAS_PREMAILER:
@@ -928,20 +940,20 @@ def _strip_container_box_styles(content):
         attrs_before = match.group(2) or ''
         style = match.group(3) or ''
         attrs_after = match.group(4) or ''
-        
+
         # 去除卡片式样式
         style = re.sub(r'background(?:-color)?\s*:\s*[^;]+;?', '', style, flags=re.IGNORECASE)
         style = re.sub(r'box-shadow\s*:\s*[^;]+;?', '', style, flags=re.IGNORECASE)
         style = re.sub(r'border-radius\s*:\s*[^;]+;?', '', style, flags=re.IGNORECASE)
         style = re.sub(r'border\s*:\s*[^;]+;?', '', style, flags=re.IGNORECASE)
         style = style.strip().strip(';')
-        
+
         if style:
             return f'<{tag}{attrs_before} style="{style}"{attrs_after}>'
         else:
             # 移除空 style 属性
             return f'<{tag}{attrs_before}{attrs_after}>'
-    
+
     # 只处理第一个匹配的容器标签
     content = re.sub(
         r'<(div|section|article|main)([^>]*)\s+style=["\']([^"\']*)["\']([^>]*)>',
@@ -950,6 +962,37 @@ def _strip_container_box_styles(content):
         count=1,
         flags=re.IGNORECASE
     )
+    return content
+
+
+def _fix_wechat_padding(content):
+    """
+    修正微信公众号文章的 padding 问题。
+
+    微信编辑器会给文章自动加内边距，如果 HTML 再有 padding 就会显得两侧很宽。
+    修正策略：
+      1. .container / .content-container 等：左右 padding 改为 0
+      2. body 的 padding 也清零（防止叠加）
+      3. max-width 保持不变（677px 是最佳阅读宽度）
+    """
+    # 修正 container 类的 padding
+    # 匹配: padding: 32px 24px; → padding: 20px 0;
+    content = re.sub(
+        r'(\.container\s*\{[^}]*?padding\s*:\s*)(\d+px)\s+(\d+px)([^}]*?\})',
+        lambda m: f"{m.group(1)}20px 0{m.group(4)}",
+        content,
+        flags=re.IGNORECASE
+    )
+
+    # 修正内联样式中的 padding（微信会过滤 <style>，内联样式才生效）
+    # 匹配: style="padding: 32px 24px;" → style="padding: 20px 0;"
+    content = re.sub(
+        r'(style=["\'][^"\']*padding\s*:\s*)(\d+px)\s+(\d+px)([^"\']*["\'])',
+        lambda m: f"{m.group(1)}20px 0{m.group(4)}",
+        content,
+        flags=re.IGNORECASE
+    )
+
     return content
 
 
@@ -972,6 +1015,9 @@ def build_article(title, content, thumb_media_id, style_content="", author=None)
 
     # 去除外层容器的卡片样式（白底+阴影+圆角），避免正文被框在大方框内
     content = _strip_container_box_styles(content)
+
+    # ★ 微信 padding 修正：自动把左右 padding 改为 0
+    content = _fix_wechat_padding(content)
 
     # 清理 premailer 产生的标签间换行和多余空格
     # 修复列表项之间的空白

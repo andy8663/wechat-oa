@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **正文配图自动生成**：`generate_infographic.py` 支持生成流程图、对比图、时间线、文字卡片、统计图
+- 新增 `infographic` 命令到 SKILL.md
+
+### Fixed
+- **图片URL替换Bug**：HTML源码中的双反斜杠路径（如 `C:\\Users\\...`）无法被替换为微信CDN地址，导致配图显示打叉。修复：上传前预处理，统一规范化所有路径格式
+
 ## [1.3.1] - 2026-04-14
 
 ### Fixed
