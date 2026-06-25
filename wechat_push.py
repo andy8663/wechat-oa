@@ -1057,6 +1057,45 @@ def draft_create(html_path, force_cover=False):
         html_path: HTML 文件路径
         force_cover: 是否强制重新生成封面，默认 False（新建草稿无旧封面可复用）
     """
+    # ── relay 模式：通过中转服务器推送 ──────────────────────────────────
+    cfg = load_config()
+    if cfg.get("PUSH_MODE", "direct") == "relay":
+        from relay_client import push_article as _relay_push
+        title, content, style_content = parse_file(html_path)
+        print(f"[TITLE] {title}")
+        print(f"[LENGTH] {len(content)} chars")
+        if style_content:
+            print(f"[STYLE] 提取到 {len(style_content)} 字符 CSS 样式")
+
+        # 生成本地封面图（用于 relay 上传）
+        thumb_path = None
+        try:
+            import tempfile
+            tmp_dir = tempfile.gettempdir()
+            thumb_path = os.path.join(tmp_dir, f"relay_cover_{int(os.path.getmtime(html_path))}.jpg")
+            if not os.path.exists(thumb_path):
+                generate_cover(title, thumb_path)
+                print(f"[COVER] 已生成本地封面图: {thumb_path}")
+        except Exception as e:
+            print(f"[WARN] 封面图生成失败，将继续无封面推送: {e}")
+
+        result = _relay_push(
+            title=title,
+            content=content,
+            author=cfg.get("author", "Woody"),
+            digest="",
+            thumb_path=thumb_path,
+        )
+        if result.get("success"):
+            media_id = result.get("media_id", "")
+            print(f"\n[OK] 草稿创建成功! (relay 模式)")
+            print(f"[MEDIA_ID] {media_id}")
+            save_draft_record(title, media_id)
+            return media_id
+        else:
+            raise Exception(f"relay 推送失败: {result.get('error', '未知错误')}")
+
+    # ── direct 模式：直连微信 API ──────────────────────────────────────
     title, content, style_content = parse_file(html_path)
     print(f"[TITLE] {title}")
     print(f"[LENGTH] {len(content)} chars")
@@ -1177,6 +1216,23 @@ def draft_update(media_id, html_path, force_cover=False):
 
 def draft_list(count=10, offset=0):
     """获取草稿列表"""
+    # ── relay 模式：通过中转服务器获取 ──────────────────────────────
+    cfg = load_config()
+    if cfg.get("PUSH_MODE", "direct") == "relay":
+        from relay_client import list_drafts as _relay_list
+        result = _relay_list(count=count, offset=offset)
+        if result.get("success"):
+            drafts = result.get("drafts", [])
+            total = result.get("total", 0)
+            print(f"\n[草稿箱] 共 {total} 篇草稿，当前返回 {len(drafts)} 篇 (relay 模式)")
+            for i, d in enumerate(drafts, 1):
+                item = d.get("content", {}).get("news_item", [{}])[0]
+                print(f"  {i}. {item.get('title', '(无标题)')}  [media_id: {d.get('media_id', '')}]")
+            return result
+        else:
+            raise Exception(f"relay 获取草稿列表失败: {result.get('error', '未知错误')}")
+
+    # ── direct 模式：直连微信 API ─────────────────────────────────
     access_token = get_access_token()
     url = f"{API_DRAFT_BATCHGET}?access_token={access_token}"
 
