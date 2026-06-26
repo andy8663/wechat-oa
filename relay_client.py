@@ -3,6 +3,7 @@
 """
 wechat-oa relay client
 中转模式客户端：将文章推送到公网服务器，由服务器转发至微信公众号平台
+支持 AI 收（Alipay Aipay）支付流程
 """
 
 import sys
@@ -22,7 +23,7 @@ def load_config():
         "APP_SECRET": "",
         "author": "Woody",
         "PUSH_MODE": "direct",
-        "RELAY_SERVER": "http://120.79.2.44:8000",
+        "RELAY_SERVER": "http://120.79.2.44",
         "WECHAT_OA_SERVER_KEY": "",
     }
     if CONFIG_FILE.exists():
@@ -33,6 +34,16 @@ def load_config():
         except Exception:
             return default_config
     return default_config
+
+
+def _get_cfg_params(api_key: str, relay_server: str) -> tuple:
+    """统一读取配置参数"""
+    cfg = load_config()
+    if not api_key:
+        api_key = cfg.get("WECHAT_OA_SERVER_KEY", "")
+    if not relay_server:
+        relay_server = cfg.get("RELAY_SERVER", "http://120.79.2.44")
+    return api_key, relay_server.rstrip('/'), cfg
 
 
 def _post(url: str, payload: dict, api_key: str, timeout: int = 30) -> dict:
@@ -51,37 +62,75 @@ def _post(url: str, payload: dict, api_key: str, timeout: int = 30) -> dict:
         return {"success": False, "error": f"服务器返回非 JSON 数据: {resp.text[:200]}"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 一站式推送：标题 + 正文 + 封面图 → 服务器 → 公众号草稿箱
-# ─────────────────────────────────────────────────────────────────────────────
+def _get(url: str, params: dict, api_key: str, timeout: int = 15) -> dict:
+    """GET 请求封装，统一错误处理"""
+    headers = {"X-API-Key": api_key}
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "error": f"网络请求失败: {e}"}
+    except json.JSONDecodeError:
+        return {"success": False, "error": f"服务器返回非 JSON 数据"}
 
-def push_article(title: str, content: str, author: str = "", digest: str = "",
-                 thumb_path: str = None, api_key: str = "", relay_server: str = "") -> dict:
+
+# ════════════════════════════════════════════════════════════════════════════
+# AI 收流程：info → order → execute
+# ════════════════════════════════════════════════════════════════════════════
+
+def get_push_info(api_key: str = "", relay_server: str = "") -> dict:
     """
-    一站式推送文章到公众号草稿箱（通过中转服务器）
+    获取推送服务信息（是否收费、价格等）
+    
+    Returns:
+        dict: {
+            "service_name": "公众号文章推送",
+            "description": "...",
+            "price": {"amount": 0.01, "currency": "CNY", "unit": "per_request"},
+            "charge_enabled": False,
+            ...
+        }
+    """
+    api_key, relay_server, _ = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    url = f"{relay_server}/api/push/article/info"
+    return _get(url, {}, api_key)
+
+
+def create_push_order(title: str = "", content: str = "", author: str = "", digest: str = "",
+                      thumb_path: str = None, api_key: str = "", relay_server: str = "") -> dict:
+    """
+    创建推送订单，获取 Payment-Needed（收费模式）
     
     Args:
         title: 文章标题
         content: 文章正文 HTML
         author: 作者
         digest: 摘要
-        thumb_path: 封面图本地路径（可选，会 base64 编码后发送）
+        thumb_path: 封面图本地路径（可选）
         api_key: WECHAT_OA_SERVER_KEY
-        relay_server: 中转服务器地址（如 http://120.79.2.44:8000）
+        relay_server: 中转服务器地址
     
     Returns:
-        dict: {"success": True/False, "media_id": "...", "message": "..."}
+        dict: {
+            "success": True,
+            "order_id": "PA_...",
+            "status": "order_created",
+            "amount": 0.01,
+            "currency": "CNY",
+            "payment_needed": "base64url_encoded_json...",  # Payment-Needed
+            "payment_method": "alipay_aipay",
+            ...
+        }
     """
-    cfg = load_config()
-    if not api_key:
-        api_key = cfg.get("WECHAT_OA_SERVER_KEY", "")
-    if not relay_server:
-        relay_server = cfg.get("RELAY_SERVER", "http://120.79.2.44:8000")
-
+    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
-    # 构建请求体
+    # 构建请求体（包含服务端必填字段）
     payload = {
         "appid": cfg.get("APP_ID", ""),
         "appsecret": cfg.get("APP_SECRET", ""),
@@ -99,9 +148,70 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
             payload["thumb_image"] = base64.b64encode(img_data).decode('utf-8')
             payload["thumb_filename"] = os.path.basename(thumb_path)
         except Exception as e:
+            print(f"[WARN] 封面图读取失败，将继续无封面创建订单: {e}")
+
+    url = f"{relay_server}/api/push/article/order"
+    result = _post(url, payload, api_key)
+    
+    # 统一包装返回格式：服务端成功返回时添加 success 标记
+    if "error" in result and not result.get("success"):
+        return result  # 保持错误格式
+    if "order_id" in result:
+        result["success"] = True
+    return result
+
+
+def execute_push_article(title: str, content: str, order_id: str,
+                         payment_proof: str = "", mock_pay: bool = False,
+                         author: str = "", digest: str = "",
+                         thumb_path: str = None, api_key: str = "",
+                         relay_server: str = "") -> dict:
+    """
+    执行推送文章到公众号草稿箱（带订单验证）
+    
+    Args:
+        title: 文章标题
+        content: 文章正文 HTML
+        order_id: 订单号（由 create_push_order 创建）
+        payment_proof: 支付凭证（收费模式必填，mock_pay 可跳过）
+        mock_pay: 是否模拟支付（调试模式，跳过真实支付验证）
+        author: 作者
+        digest: 摘要
+        thumb_path: 封面图本地路径（可选，会 base64 编码后发送）
+        api_key: WECHAT_OA_SERVER_KEY
+        relay_server: 中转服务器地址
+    
+    Returns:
+        dict: {"success": True/False, "media_id": "...", "message": "..."}
+    """
+    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    # 构建请求体
+    payload = {
+        "appid": cfg.get("APP_ID", ""),
+        "appsecret": cfg.get("APP_SECRET", ""),
+        "title": title,
+        "content": content,
+        "author": author or cfg.get("author", "Woody"),
+        "digest": digest,
+        "order_id": order_id,
+        "payment_proof": payment_proof,
+        "mock_pay": mock_pay,
+    }
+
+    # 封面图：读取并 base64 编码
+    if thumb_path and os.path.exists(thumb_path):
+        try:
+            with open(thumb_path, 'rb') as f:
+                img_data = f.read()
+            payload["thumb_image"] = base64.b64encode(img_data).decode('utf-8')
+            payload["thumb_filename"] = os.path.basename(thumb_path)
+        except Exception as e:
             print(f"[WARN] 封面图读取失败，将继续无封面推送: {e}")
 
-    url = f"{relay_server.rstrip('/')}/api/push/article"
+    url = f"{relay_server}/api/push/article"
     result = _post(url, payload, api_key)
 
     if result.get("success"):
@@ -110,9 +220,66 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
         return {"success": False, "error": result.get("error", "未知错误")}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
+# 兼容旧版：一站式推送（自动判断免费/收费模式）
+# ════════════════════════════════════════════════════════════════════════════
+
+def push_article(title: str, content: str, author: str = "", digest: str = "",
+                 thumb_path: str = None, api_key: str = "", relay_server: str = "") -> dict:
+    """
+    一站式推送文章到公众号草稿箱（通过中转服务器）
+    
+    兼容模式：自动检测是否收费
+    - 免费模式：直接推送
+    - 收费模式：返回订单信息，需要调用者分步执行（create_order → execute）
+    
+    Args:
+        title: 文章标题
+        content: 文章正文 HTML
+        author: 作者
+        digest: 摘要
+        thumb_path: 封面图本地路径（可选，会 base64 编码后发送）
+        api_key: WECHAT_OA_SERVER_KEY
+        relay_server: 中转服务器地址（如 http://120.79.2.44）
+    
+    Returns:
+        dict: 免费模式: {"success": True, "media_id": "..."}
+              收费模式: {"success": False, "charge_required": True, "order_info": {...}}
+              失败: {"success": False, "error": "..."}
+    """
+    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    # 先检查是否收费
+    info = get_push_info(api_key, relay_server)
+    if info.get("charge_enabled"):
+        # 收费模式：需要分步执行（create_order → execute）
+        order_result = create_push_order(
+            title=title, content=content, author=author, digest=digest,
+            thumb_path=thumb_path, api_key=api_key, relay_server=relay_server,
+        )
+        if not order_result.get("success"):
+            return {"success": False, "error": order_result.get("error", "创建订单失败")}
+        
+        return {
+            "success": False,
+            "charge_required": True,
+            "order_info": order_result,
+            "message": f"推送需要支付 ¥{order_result.get('amount', 0.01)}，请完成支付后再执行推送",
+        }
+
+    # 免费模式：直接调用 execute（不带 order_id）
+    return execute_push_article(
+        title=title, content=content, order_id="",
+        author=author, digest=digest, thumb_path=thumb_path,
+        api_key=api_key, relay_server=relay_server,
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # 列出草稿箱（通过中转服务器）
-# ─────────────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
 
 def list_drafts(count: int = 10, offset: int = 0, api_key: str = "", relay_server: str = "") -> dict:
     """
@@ -127,12 +294,7 @@ def list_drafts(count: int = 10, offset: int = 0, api_key: str = "", relay_serve
     Returns:
         dict: {"success": True/False, "drafts": [...], "total": N}
     """
-    cfg = load_config()
-    if not api_key:
-        api_key = cfg.get("WECHAT_OA_SERVER_KEY", "")
-    if not relay_server:
-        relay_server = cfg.get("RELAY_SERVER", "http://120.79.2.44:8000")
-
+    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -143,21 +305,13 @@ def list_drafts(count: int = 10, offset: int = 0, api_key: str = "", relay_serve
         "offset": offset,
     }
 
-    url = f"{relay_server.rstrip('/')}/api/push/drafts"
-    headers = {"X-API-Key": api_key}
-    try:
-        resp = requests.get(url, headers=headers, params=params, timeout=15)
-        resp.raise_for_status()
-        return resp.json()
-    except requests.exceptions.RequestException as e:
-        return {"success": False, "error": f"网络请求失败: {e}"}
-    except json.JSONDecodeError:
-        return {"success": False, "error": f"服务器返回非 JSON 数据"}
+    url = f"{relay_server}/api/push/drafts"
+    return _get(url, params, api_key)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
 # CLI 入口（供命令行直接调用测试）
-# ─────────────────────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     import argparse
@@ -165,13 +319,36 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="wechat-oa relay client")
     subparsers = parser.add_subparsers(dest="command")
 
-    # push 子命令
+    # push 子命令（兼容旧版）
     push_parser = subparsers.add_parser("push", help="推送文章到公众号草稿箱")
     push_parser.add_argument("html_path", help="HTML 文件路径")
     push_parser.add_argument("--title", default="", help="文章标题")
     push_parser.add_argument("--author", default="", help="作者")
     push_parser.add_argument("--digest", default="", help="摘要")
     push_parser.add_argument("--thumb", default="", help="封面图路径")
+    push_parser.add_argument("--mock-pay", action="store_true", help="模拟支付（调试模式）")
+
+    # info 子命令
+    info_parser = subparsers.add_parser("info", help="查看推送服务信息")
+
+    # order 子命令
+    order_parser = subparsers.add_parser("order", help="创建推送订单")
+    order_parser.add_argument("html_path", help="HTML 文件路径")
+    order_parser.add_argument("--title", default="", help="文章标题")
+    order_parser.add_argument("--author", default="", help="作者")
+    order_parser.add_argument("--digest", default="", help="摘要")
+    order_parser.add_argument("--thumb", default="", help="封面图路径")
+
+    # execute 子命令
+    execute_parser = subparsers.add_parser("execute", help="执行推送（需先创建订单）")
+    execute_parser.add_argument("html_path", help="HTML 文件路径")
+    execute_parser.add_argument("--order-id", required=True, help="订单号")
+    execute_parser.add_argument("--payment-proof", default="", help="支付凭证")
+    execute_parser.add_argument("--mock-pay", action="store_true", help="模拟支付（调试模式）")
+    execute_parser.add_argument("--title", default="", help="文章标题")
+    execute_parser.add_argument("--author", default="", help="作者")
+    execute_parser.add_argument("--digest", default="", help="摘要")
+    execute_parser.add_argument("--thumb", default="", help="封面图路径")
 
     # list 子命令
     list_parser = subparsers.add_parser("list", help="列出草稿箱")
@@ -188,6 +365,40 @@ if __name__ == "__main__":
             content = f.read()
         title = args.title or os.path.basename(args.html_path).replace('.html', '')
         result = push_article(title, content, args.author, args.digest, args.thumb or None)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if result.get("charge_required"):
+            print(f"\n[提示] 收费模式：请完成支付后，用以下命令执行推送：")
+            print(f"  python relay_client.py execute {args.html_path} --order-id {result['order_info']['order_id']} --mock-pay")
+
+    elif args.command == "info":
+        result = get_push_info()
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    elif args.command == "order":
+        if not os.path.exists(args.html_path):
+            print(f"[ERROR] 文件不存在: {args.html_path}")
+            sys.exit(1)
+        with open(args.html_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        title = args.title or os.path.basename(args.html_path).replace('.html', '')
+        result = create_push_order(
+            title=title, content=content, author=args.author, digest=args.digest,
+            thumb_path=args.thumb or None,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+
+    elif args.command == "execute":
+        if not os.path.exists(args.html_path):
+            print(f"[ERROR] 文件不存在: {args.html_path}")
+            sys.exit(1)
+        with open(args.html_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        title = args.title or os.path.basename(args.html_path).replace('.html', '')
+        result = execute_push_article(
+            title=title, content=content, order_id=args.order_id,
+            payment_proof=args.payment_proof, mock_pay=args.mock_pay,
+            author=args.author, digest=args.digest, thumb_path=args.thumb or None,
+        )
         print(json.dumps(result, ensure_ascii=False, indent=2))
 
     elif args.command == "list":

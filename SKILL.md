@@ -2,7 +2,7 @@
 name: wechat-oa
 description: WeChat Official Account draft management toolkit. Trigger words: 看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/生成封面图/上传图片/生成配图. Official API, no third-party dependencies.
 description_zh: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/按关键词找草稿/按标题搜/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/批量删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/已发布文章列表/公众号素材列表/素材管理/删除素材/交互式删除/批量删除素材/关键词过滤素材/生成配图/生成信息图。官方API，无需第三方依赖。
-version: "1.4.0"
+version: "1.5.0"
 author: Woody
 email: andy8663@163.com
 wechat_mp: 用技术定义未来
@@ -79,6 +79,67 @@ Before creating or updating any WeChat article, AI MUST read `design.md` and str
 | `userinfo <openid>` | 获取用户基本信息（需认证账号）/ Get user info by openid | `user/info` |
 | `userlist [next_openid]` | 获取用户列表（需认证账号）/ List all users | `user/get` |
 
+## 中继模式 (Relay Mode) / AI 收支付
+
+当 `config.json` 中 `PUSH_MODE` 设为 `relay` 时，文章通过公网服务器（wechat-oa-server）中转推送到微信公众号。中继模式支持 **支付宝 AI 收** 支付功能。
+
+### 推送流程（免费模式）
+
+```bash
+python wechat_push.py create article.html
+```
+
+### 推送流程（收费模式 / AI 收）
+
+中继服务器开启收费时，推送需要分 3 步：
+
+```text
+1. 创建订单 → 获取 Payment-Needed
+2. 用户完成支付宝支付 → 获取 payment_proof
+3. 执行推送 → 带 order_id + payment_proof
+```
+
+**步骤 1：创建订单**
+
+```bash
+python relay_client.py order
+```
+
+返回示例：
+```json
+{
+  "order_id": "PA_1750932000_a1b2c3d4",
+  "amount": 0.01,
+  "currency": "CNY",
+  "payment_needed": "base64url_encoded_json...",
+  "payment_method": "alipay_aipay"
+}
+```
+
+**步骤 2：完成支付（获取 payment_proof）**
+
+在 WorkBuddy 中，Agent 会调用 `alipay-payment-skill` 处理 `Payment-Needed` 完成支付。
+
+**步骤 3：执行推送（带订单验证）**
+
+```bash
+# 真实支付（带 payment_proof）
+python relay_client.py execute article.html --order-id PA_xxx --payment-proof "{...}"
+
+# 调试模式（mock_pay，跳过真实支付验证）
+python relay_client.py execute article.html --order-id PA_xxx --mock-pay
+```
+
+### 快捷调试命令
+
+```bash
+# 查看推送服务信息（是否收费、价格）
+python relay_client.py info
+
+# 查看草稿列表
+python relay_client.py list
+```
+
 ## 初始化配置 / Initial Setup
 
 使用前必须完成以下配置：Complete the following before first use:
@@ -114,7 +175,10 @@ cp config.example.json config.json
 {
   "APP_ID": "wx0000000000000000",
   "APP_SECRET": "00000000000000000000000000000000",
-  "author": "龙虾"  // 文章默认作者 / Default article author
+  "author": "龙虾",
+  "PUSH_MODE": "direct",
+  "RELAY_SERVER": "http://120.79.2.44",
+  "WECHAT_OA_SERVER_KEY": ""
 }
 ```
 

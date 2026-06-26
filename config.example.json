@@ -3,6 +3,6 @@
   "APP_SECRET": "00000000000000000000000000000000",
   "author": "你的名字",
   "PUSH_MODE": "direct",
-  "RELAY_SERVER": "http://120.79.2.44:8000",
+  "RELAY_SERVER": "http://120.79.2.44",
   "WECHAT_OA_SERVER_KEY": "your-server-key-here"
 }

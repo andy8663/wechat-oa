@@ -1092,6 +1092,15 @@ def draft_create(html_path, force_cover=False):
             print(f"[MEDIA_ID] {media_id}")
             save_draft_record(title, media_id)
             return media_id
+        elif result.get("charge_required"):
+            # AI 收收费模式：需要分步执行
+            order_info = result.get("order_info", {})
+            order_id = order_info.get("order_id", "")
+            amount = order_info.get("amount", 0.01)
+            print(f"\n[AI 收] 推送需要支付 ¥{amount}，订单号: {order_id}")
+            print(f"[提示] 请完成支付后再执行推送（调试模式可用 --mock-pay 跳过）")
+            print(f"[命令] 支付后执行: python relay_client.py execute {html_path} --order-id {order_id} --mock-pay")
+            raise Exception(f"AI 收收费模式：需要支付 ¥{amount}，订单: {order_id}")
         else:
             raise Exception(f"relay 推送失败: {result.get('error', '未知错误')}")
 
