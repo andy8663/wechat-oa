@@ -1048,63 +1048,62 @@ def save_draft_record(title, media_id):
     print(f"[INFO] 草稿记录已保存到 {record_file}")
 
 
-# ========== 草稿操作 ==========
+def _is_ip_whitelist_error(e):
+    """判断异常是否为微信 IP 白名单未配置错误"""
+    err_msg = str(e).lower()
+    ip_keywords = ["ip", "whitelist", "白名单", "40164", "invalid ip", "not in whitelist"]
+    return any(kw in err_msg for kw in ip_keywords)
 
-def draft_create(html_path, force_cover=False):
-    """创建新草稿
 
-    Args:
-        html_path: HTML 文件路径
-        force_cover: 是否强制重新生成封面，默认 False（新建草稿无旧封面可复用）
-    """
-    # ── relay 模式：通过中转服务器推送 ──────────────────────────────────
-    cfg = load_config()
-    if cfg.get("PUSH_MODE", "direct") == "relay":
-        from relay_client import push_article as _relay_push
-        title, content, style_content = parse_file(html_path)
-        print(f"[TITLE] {title}")
-        print(f"[LENGTH] {len(content)} chars")
-        if style_content:
-            print(f"[STYLE] 提取到 {len(style_content)} 字符 CSS 样式")
+def _draft_create_relay(html_path, cfg):
+    """relay 模式创建草稿"""
+    from relay_client import push_article as _relay_push
+    title, content, style_content = parse_file(html_path)
+    print(f"[TITLE] {title}")
+    print(f"[LENGTH] {len(content)} chars")
+    if style_content:
+        print(f"[STYLE] 提取到 {len(style_content)} 字符 CSS 样式")
 
-        # 生成本地封面图（用于 relay 上传）
-        thumb_path = None
-        try:
-            import tempfile
-            tmp_dir = tempfile.gettempdir()
-            thumb_path = os.path.join(tmp_dir, f"relay_cover_{int(os.path.getmtime(html_path))}.jpg")
-            if not os.path.exists(thumb_path):
-                generate_cover(title, thumb_path)
-                print(f"[COVER] 已生成本地封面图: {thumb_path}")
-        except Exception as e:
-            print(f"[WARN] 封面图生成失败，将继续无封面推送: {e}")
+    # 生成本地封面图（用于 relay 上传）
+    thumb_path = None
+    try:
+        import tempfile
+        tmp_dir = tempfile.gettempdir()
+        thumb_path = os.path.join(tmp_dir, f"relay_cover_{int(os.path.getmtime(html_path))}.jpg")
+        if not os.path.exists(thumb_path):
+            generate_cover(title, thumb_path)
+            print(f"[COVER] 已生成本地封面图: {thumb_path}")
+    except Exception as e:
+        print(f"[WARN] 封面图生成失败，将继续无封面推送: {e}")
 
-        result = _relay_push(
-            title=title,
-            content=content,
-            author=cfg.get("author", "Woody"),
-            digest="",
-            thumb_path=thumb_path,
-        )
-        if result.get("success"):
-            media_id = result.get("media_id", "")
-            print(f"\n[OK] 草稿创建成功! (relay 模式)")
-            print(f"[MEDIA_ID] {media_id}")
-            save_draft_record(title, media_id)
-            return media_id
-        elif result.get("charge_required"):
-            # AI 收收费模式：需要分步执行
-            order_info = result.get("order_info", {})
-            order_id = order_info.get("order_id", "")
-            amount = order_info.get("amount", 0.01)
-            print(f"\n[AI 收] 推送需要支付 ¥{amount}，订单号: {order_id}")
-            print(f"[提示] 请完成支付后再执行推送（调试模式可用 --mock-pay 跳过）")
-            print(f"[命令] 支付后执行: python relay_client.py execute {html_path} --order-id {order_id} --mock-pay")
-            raise Exception(f"AI 收收费模式：需要支付 ¥{amount}，订单: {order_id}")
-        else:
-            raise Exception(f"relay 推送失败: {result.get('error', '未知错误')}")
+    result = _relay_push(
+        title=title,
+        content=content,
+        author=cfg.get("author", "Woody"),
+        digest="",
+        thumb_path=thumb_path,
+    )
+    if result.get("success"):
+        media_id = result.get("media_id", "")
+        print(f"\n[OK] 草稿创建成功! (relay 模式)")
+        print(f"[MEDIA_ID] {media_id}")
+        save_draft_record(title, media_id)
+        return media_id
+    elif result.get("charge_required"):
+        # AI 收收费模式：需要分步执行
+        order_info = result.get("order_info", {})
+        order_id = order_info.get("order_id", "")
+        amount = order_info.get("amount", 0.01)
+        print(f"\n[AI 收] 推送需要支付 ¥{amount}，订单号: {order_id}")
+        print(f"[提示] 请完成支付后再执行推送（调试模式可用 --mock-pay 跳过）")
+        print(f"[命令] 支付后执行: python relay_client.py execute {html_path} --order-id {order_id} --mock-pay")
+        raise Exception(f"AI 收收费模式：需要支付 ¥{amount}，订单: {order_id}")
+    else:
+        raise Exception(f"relay 推送失败: {result.get('error', '未知错误')}")
 
-    # ── direct 模式：直连微信 API ──────────────────────────────────────
+
+def _draft_create_direct(html_path, force_cover=False):
+    """direct 模式创建草稿"""
     title, content, style_content = parse_file(html_path)
     print(f"[TITLE] {title}")
     print(f"[LENGTH] {len(content)} chars")
@@ -1113,7 +1112,7 @@ def draft_create(html_path, force_cover=False):
 
     access_token = get_access_token()
 
-    # ★ 正文图片处理：提取本地图片并上传到微信素材库
+    # 正文图片处理：提取本地图片并上传到微信素材库
     base_path = os.path.dirname(os.path.abspath(html_path))
     content, img_count, img_failed = extract_and_upload_images(content, base_path, access_token)
     if img_count > 0:
@@ -1133,7 +1132,7 @@ def draft_create(html_path, force_cover=False):
 
     article = build_article(title, content, thumb_media_id, style_content)
 
-    # ★ 关键修复：必须用 data=json.dumps(..., ensure_ascii=False).encode('utf-8')
+    # 关键修复：必须用 data=json.dumps(..., ensure_ascii=False).encode('utf-8')
     # 绝对不能用 json=payload（默认 ASCII 转义，中文会变成 \\uXXXX 导致乱码）
     json_data = json.dumps({"articles": [article]}, ensure_ascii=False).encode('utf-8')
     url = f"{API_DRAFT_ADD}?access_token={access_token}"
@@ -1148,6 +1147,90 @@ def draft_create(html_path, force_cover=False):
         return media_id
     else:
         raise Exception(f"创建草稿失败: {data}")
+
+
+def _draft_list_relay(count=10, offset=0):
+    """relay 模式获取草稿列表"""
+    from relay_client import list_drafts as _relay_list
+    result = _relay_list(count=count, offset=offset)
+    if result.get("success"):
+        drafts = result.get("drafts", [])
+        total = result.get("total", 0)
+        print(f"\n[草稿箱] 共 {total} 篇草稿，当前返回 {len(drafts)} 篇 (relay 模式)")
+        for i, d in enumerate(drafts, 1):
+            item = d.get("content", {}).get("news_item", [{}])[0]
+            print(f"  {i}. {item.get('title', '(无标题)')}  [media_id: {d.get('media_id', '')}]")
+        return result
+    else:
+        raise Exception(f"relay 获取草稿列表失败: {result.get('error', '未知错误')}")
+
+
+def _draft_list_direct(count=10, offset=0):
+    """direct 模式获取草稿列表"""
+    access_token = get_access_token()
+    url = f"{API_DRAFT_BATCHGET}?access_token={access_token}"
+
+    json_data = json.dumps({
+        "offset": offset,
+        "count": count,
+        "no_content": 0
+    }, ensure_ascii=False).encode('utf-8')
+
+    resp = requests.post(url, data=json_data, headers={'Content-Type': 'application/json; charset=utf-8'}, timeout=30)
+    data = resp.json()
+
+    errcode = data.get("errcode", 0)
+    if errcode != 0:
+        raise Exception(f"获取草稿列表失败: {data}")
+
+    items = data.get("item", [])
+    total = data.get("total_count", 0)
+    print(f"\n[草稿箱] 共 {total} 篇草稿 (显示 {len(items)} 篇):\n")
+    for i, item in enumerate(items):
+        media_id = item.get("media_id", "N/A")
+        articles = item.get("content", {}).get("news_item", [])
+        if articles:
+            art = articles[0]
+            title = art.get("title", "无标题")
+            digest_raw = art.get("digest", "")
+            digest = re.sub(r'[\r\n]+', ' ', digest_raw).strip()
+            update_time = datetime.fromtimestamp(item.get("update_time", 0)).strftime("%Y-%m-%d %H:%M")
+            print(f"  [{i+1}] {title}  |  {update_time}  |  {media_id}")
+            if digest:
+                print(f"      摘要: {digest[:60]}{'...' if len(digest) > 60 else ''}")
+    return items
+
+
+# ========== 草稿操作 ==========
+
+
+def draft_create(html_path, force_cover=False):
+    """创建新草稿
+
+    Args:
+        html_path: HTML 文件路径
+        force_cover: 是否强制重新生成封面，默认 False（新建草稿无旧封面可复用）
+    """
+    cfg = load_config()
+    push_mode = cfg.get("PUSH_MODE", "direct")
+
+    # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
+    if push_mode == "hybrid":
+        try:
+            return _draft_create_direct(html_path, force_cover)
+        except Exception as e:
+            if _is_ip_whitelist_error(e):
+                print(f"[HYBRID] Direct 模式因 IP 白名单限制失败，自动切换到 relay 模式...")
+                return _draft_create_relay(html_path, cfg)
+            else:
+                raise
+
+    # ── relay 模式 ──
+    if push_mode == "relay":
+        return _draft_create_relay(html_path, cfg)
+
+    # ── direct 模式（默认）────────────────────────────────────
+    return _draft_create_direct(html_path, force_cover)
 
 
 
@@ -1225,57 +1308,26 @@ def draft_update(media_id, html_path, force_cover=False):
 
 def draft_list(count=10, offset=0):
     """获取草稿列表"""
-    # ── relay 模式：通过中转服务器获取 ──────────────────────────────
     cfg = load_config()
-    if cfg.get("PUSH_MODE", "direct") == "relay":
-        from relay_client import list_drafts as _relay_list
-        result = _relay_list(count=count, offset=offset)
-        if result.get("success"):
-            drafts = result.get("drafts", [])
-            total = result.get("total", 0)
-            print(f"\n[草稿箱] 共 {total} 篇草稿，当前返回 {len(drafts)} 篇 (relay 模式)")
-            for i, d in enumerate(drafts, 1):
-                item = d.get("content", {}).get("news_item", [{}])[0]
-                print(f"  {i}. {item.get('title', '(无标题)')}  [media_id: {d.get('media_id', '')}]")
-            return result
-        else:
-            raise Exception(f"relay 获取草稿列表失败: {result.get('error', '未知错误')}")
+    push_mode = cfg.get("PUSH_MODE", "direct")
 
-    # ── direct 模式：直连微信 API ─────────────────────────────────
-    access_token = get_access_token()
-    url = f"{API_DRAFT_BATCHGET}?access_token={access_token}"
+    # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
+    if push_mode == "hybrid":
+        try:
+            return _draft_list_direct(count, offset)
+        except Exception as e:
+            if _is_ip_whitelist_error(e):
+                print(f"[HYBRID] Direct 模式因 IP 白名单限制失败，自动切换到 relay 模式...")
+                return _draft_list_relay(count, offset)
+            else:
+                raise
 
-    json_data = json.dumps({
-        "offset": offset,
-        "count": count,
-        "no_content": 0
-    }, ensure_ascii=False).encode('utf-8')
+    # ── relay 模式 ──
+    if push_mode == "relay":
+        return _draft_list_relay(count, offset)
 
-    resp = requests.post(url, data=json_data, headers={'Content-Type': 'application/json; charset=utf-8'}, timeout=30)
-    data = resp.json()
-
-    errcode = data.get("errcode", 0)
-    if errcode != 0:
-        raise Exception(f"获取草稿列表失败: {data}")
-
-    items = data.get("item", [])
-    total = data.get("total_count", 0)
-    print(f"\n[草稿箱] 共 {total} 篇草稿 (显示 {len(items)} 篇):\n")
-    for i, item in enumerate(items):
-        media_id = item.get("media_id", "N/A")
-        articles = item.get("content", {}).get("news_item", [])
-        if articles:
-            art = articles[0]
-            title = art.get("title", "无标题")
-            # digest 可能有换行符（HTML 中的空白符），清理掉
-            digest_raw = art.get("digest", "")
-            digest = re.sub(r'[\r\n]+', ' ', digest_raw).strip()
-            update_time = datetime.fromtimestamp(item.get("update_time", 0)).strftime("%Y-%m-%d %H:%M")
-            # 输出一行，避免 Windows PowerShell 空行问题
-            print(f"  [{i+1}] {title}  |  {update_time}  |  {media_id}")
-            if digest:
-                print(f"      摘要: {digest[:60]}{'...' if len(digest) > 60 else ''}")
-    return items
+    # ── direct 模式（默认）────────────────────────────────────
+    return _draft_list_direct(count, offset)
 
 
 def draft_delete(media_id):

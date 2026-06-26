@@ -57,6 +57,31 @@ config.json 模板：
 
 > **IP 白名单 / IP Whitelist**: 如果启用了 IP 白名单，需将本机出口 IP 加入白名单，否则 API 调用会返回 40125 错误。
 > If IP whitelist is enabled, add your machine's outbound IP to the whitelist, otherwise API calls will return error 40125.
+>
+> 如果不方便配置 IP 白名单，可使用 **hybrid** 或 **relay** 模式，详见下方「推送模式」章节。
+
+### 推送模式 Push Modes
+
+`config.json` 中 `PUSH_MODE` 支持三种模式：
+
+| 模式 | 说明 | 适用场景 |
+|------|------|----------|
+| **direct** | 直连微信官方 API | 已配置 IP 白名单，本机 IP 在公众号后台白名单中 |
+| **relay** | 通过公网中转服务器推送 | 本机 IP 不在白名单，或需要跨网络推送 |
+| **hybrid** | 优先 direct，IP 白名单失败自动切换 relay | **推荐** — 兼顾速度与兼容性 |
+
+**hybrid 模式工作流程**：
+1. 先尝试 direct 直连微信 API
+2. 若返回 IP 白名单错误（40164 / invalid ip），自动切换到 relay 中继模式
+3. relay 模式下通过公网服务器转发请求，无需配置 IP 白名单
+
+```json
+{
+  "PUSH_MODE": "hybrid",
+  "WECHAT_OA_SERVER": "http://your-server-ip",
+  "WECHAT_OA_SERVER_KEY": "your-key"
+}
+```
 
 ### 3. 使用 Usage
 
