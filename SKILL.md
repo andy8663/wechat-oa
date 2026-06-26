@@ -1,7 +1,7 @@
 ---
 name: wechat-oa
 description: WeChat Official Account draft management toolkit. Trigger words: 看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/生成封面图/上传图片/生成配图. Official API, no third-party dependencies.
-description_zh: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/按关键词找草稿/按标题搜/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/批量删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/已发布文章列表/公众号素材列表/素材管理/删除素材/交互式删除/批量删除素材/关键词过滤素材/生成配图/生成信息图。官方API，无需第三方依赖。
+description_zh: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/按关键词找草稿/按标题搜/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/批量删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/已发布文章列表/公众号素材列表/素材管理/删除素材/交互式删除/批量删除素材/关键词过滤素材/生成配图/生成信息图/去AI味/去Al味/文字改写/quaiwei。官方API，无需第三方依赖。
 version: "1.5.0"
 author: Woody
 email: andy8663@163.com
@@ -21,6 +21,9 @@ metadata:
       - "生成封面图"
       - "上传图片到素材库"
       - "生成正文配图"
+      - "去AI味"
+      - "文字改写"
+      - "去除AI痕迹"
 ---
 
 # wechat-oa
@@ -78,6 +81,7 @@ Before creating or updating any WeChat article, AI MUST read `design.md` and str
 | `infographic <类型> <输出路径> [参数]` | 生成正文配图（流程图/对比图/时间线/文字卡片/统计图）/ Generate inline image (steps/comparison/timeline/textcard/stats) | PIL local generation |
 | `userinfo <openid>` | 获取用户基本信息（需认证账号）/ Get user info by openid | `user/info` |
 | `userlist [next_openid]` | 获取用户列表（需认证账号）/ List all users | `user/get` |
+| `quaiwei <文字内容>` | 去AI味 - 去除文字中的AI生成痕迹（按次收费1元）/ Remove AI-generated flavor from text | Claude API + 支付宝AI收 |
 
 ## 中继模式 (Relay Mode) / AI 收支付
 
@@ -317,6 +321,9 @@ python generate_infographic.py textcard output/quote.png "天下没有难汇的�
 
 # 数据统计
 python generate_infographic.py stats output/stats.png "手续费:最低" "到账速度:最快" "覆盖范围:最广"
+
+# 去AI味 - 去除文字中的AI生成痕迹（按次收费1元）
+python wechat_push.py quaiwei "这款产品值得注意的是，综上所述，此外还有很好的用户体验..."
 ```
 
 ### 配图插入文章流程

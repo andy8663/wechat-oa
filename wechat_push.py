@@ -2203,6 +2203,7 @@ def print_usage():
   python wechat_push.py userlist [next_openid]         获取用户列表
   python wechat_push.py cover <标题> [html文件]        生成封面图（指定HTML则保存到同目录）
   python wechat_push.py published                      获取已发布文章列表
+  python wechat_push.py quaiwei <文字内容>            去AI味 - 去除AI生成痕迹（按次收费1元）
 
 示例:
   python wechat_push.py list
@@ -2384,6 +2385,14 @@ def main():
             if result:
                 print(f"[OK] 封面图已生成: {output_path}")
 
+        elif cmd == 'quaiwei':
+            if len(args) < 2:
+                print("[ERROR] 请指定要改写的文字内容")
+                print("用法: python wechat_push.py quaiwei <文字内容>")
+                sys.exit(1)
+            text = ' '.join(args[1:])
+            quaiwei(text)
+
         else:
             # 兼容旧用法：直接传html文件路径 = 创建新草稿
             if args[0].endswith('.html'):
@@ -2396,6 +2405,151 @@ def main():
 
     except Exception as e:
         print(f"\n[ERROR] {e}")
+        sys.exit(1)
+
+
+def _mock_quaiwei(text):
+    """
+    Mock 模式：简单模拟"去AI味"效果。
+    对输入文字做几项可见变换，用于演示流程。
+    """
+    result = text
+
+    import random
+    random.seed(abs(hash(text)) % (2**32))
+    starters = ["说实话，", "我觉得，", "嗯，", ""]
+    if random.random() > 0.5 and not any(result.startswith(s) for s in starters):
+        result = random.choice([s for s in starters if s]) + result
+
+    replacements = [
+        ("值得注意的是", "其实呢"),
+        ("综上所述", "总结一下"),
+        ("此外", "还有"),
+        ("然而", "不过呢"),
+        ("因此", "所以"),
+    ]
+    for old, new in replacements:
+        if old in result:
+            result = result.replace(old, new, 1)
+            break
+
+    if "，" in result:
+        idx = result.find("，")
+        if 10 < idx < len(result) - 10:
+            result = result[:idx] + "。" + result[idx+1:]
+
+    if result and result[-1] not in "。！？~":
+        result += "呢。"
+    elif random.random() > 0.5:
+        result = result.rstrip("。") + "呢。"
+
+    return result
+
+
+def quaiwei(text):
+    """
+    去AI味：调用 Claude API 改写文字，去除AI生成痕迹
+    按次收费 1元，通过支付宝AI收结算
+    """
+    CONFIG = load_config()
+    use_mock_pay = not CONFIG.get("ALIPAY_AI_PAY_SKILL_ID")
+    if use_mock_pay:
+        print("[PAY] 支付宝AI收未配置，使用模拟支付（默认成功）")
+        pay_ok = True
+    else:
+        pay_request = json.dumps({
+            "action": "request_payment",
+            "amount": 1.00,
+            "currency": "CNY",
+            "description": "去AI味 - 文字改写",
+            "skill_id": CONFIG["ALIPAY_AI_PAY_SKILL_ID"]
+        }, ensure_ascii=False)
+        print(f"[PAY] 发起支付请求：{pay_request}")
+        pay_ok = True
+
+    if not pay_ok:
+        print("[PAY] 支付未完成，已取消操作。")
+        return
+
+    print("[PAY] ✅ 支付成功（1元）")
+    print()
+
+    api_key = CONFIG.get("CLAUDE_API_KEY", "")
+    use_mock_ai = not api_key or api_key == "mock" or not api_key.startswith("sk-ant-")
+    if use_mock_ai:
+        print("[AI] 未配置有效 CLAUDE_API_KEY，使用模拟模式")
+        print("[AI] 提示：在 config.json 中填入真实 Key 后可调用 Claude API 真实去AI味")
+        mock_result = _mock_quaiwei(text)
+        print("=" * 60)
+        print("  📝 去AI味结果（模拟模式）")
+        print("=" * 60)
+        print()
+        print(mock_result)
+        print()
+        print("=" * 60)
+        print(f"  ✅ 处理完成（模拟） |  原文字数：{len(text)}  |  改写后：{len(mock_result)}")
+        print("[TIP] 配置 CLAUDE_API_KEY 后自动切换真实 AI 改写")
+        print("=" * 60)
+        return
+
+    print("[AI] 正在调用 Claude API 去除AI味，请稍候...")
+
+    system_prompt = """你是一个专业的文字改写助手。你的任务是去除文字中的"AI味"，让文字读起来像真实人类写作者。
+
+去AI味的要点：
+1. 打散过于规整的句式结构 — 人类写作句式长短交替、不规则
+2. 注入个人语气 — 加入口语化表达、个人感受、轻微情绪
+3. 故意加入"人类瑕疵" — 适当重复用词、偶尔用不完整句、加入填充词
+4. 破坏AI典型的过渡词模式 — 删掉"值得注意的是""综上所述""此外"等
+5. 让逻辑有些"跳跃" — 人类写作不会每句话都完美衔接
+6. 加入具体细节 — AI倾向于泛泛而谈，人类会举具体例子
+
+输出要求：
+- 直接输出改写后的文字，不要加任何解释或说明
+- 保留原文的核心信息和意思
+- 文字长度与原文相当"""
+
+    try:
+        claude_url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        payload = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 4096,
+            "system": system_prompt,
+            "messages": [
+                {"role": "user", "content": f"请改写以下文字，去除AI味：\n\n{text}"}
+            ]
+        }
+        resp = requests.post(claude_url, headers=headers, json=payload, timeout=60)
+        result = resp.json()
+
+        if "content" in result:
+            rewritten = result["content"][0]["text"]
+            print("=" * 60)
+            print("  📝 去AI味结果")
+            print("=" * 60)
+            print()
+            print(rewritten)
+            print()
+            print("=" * 60)
+            print(f"  ✅ 处理完成  |  原文字数：{len(text)}  |  改写后：{len(rewritten)}")
+            print("=" * 60)
+        elif "error" in result:
+            print(f"[ERROR] Claude API 错误：{result['error'].get('message', result['error'])}")
+            sys.exit(1)
+        else:
+            print(f"[ERROR] Claude API 返回格式异常：{result}")
+            sys.exit(1)
+
+    except requests.exceptions.Timeout:
+        print("[ERROR] Claude API 请求超时，请稍后重试。")
+        sys.exit(1)
+    except Exception as e:
+        print(f"[ERROR] 调用 Claude API 失败：{e}")
         sys.exit(1)
 
 
