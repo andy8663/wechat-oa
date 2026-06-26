@@ -69,6 +69,22 @@ def _post(url: str, payload: dict, api_key: str, timeout: int = 30) -> dict:
         return {"success": False, "error": f"服务器返回非 JSON 数据: {resp.text[:200]}"}
 
 
+def _put(url: str, payload: dict, api_key: str, timeout: int = 30) -> dict:
+    """PUT 请求封装，统一错误处理"""
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": api_key,
+    }
+    try:
+        resp = requests.put(url, headers=headers, json=payload, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "error": f"网络请求失败: {e}"}
+    except json.JSONDecodeError:
+        return {"success": False, "error": f"服务器返回非 JSON 数据: {resp.text[:200]}"}
+
+
 def _get(url: str, params: dict, api_key: str, timeout: int = 15) -> dict:
     """GET 请求封装，统一错误处理"""
     headers = {"X-API-Key": api_key}
@@ -497,7 +513,7 @@ def update_draft(media_id: str, title: str, content: str, author: str = "", dige
             print(f"[WARN] 封面图读取失败，将继续无封面更新: {e}")
 
     url = f"{relay_server}/api/push/article/{media_id}"
-    result = _post(url, payload, api_key, timeout=30)
+    result = _put(url, payload, api_key, timeout=30)
 
     if result.get("success"):
         return {"success": True, "message": result.get("message", "更新成功")}
@@ -676,7 +692,7 @@ def list_materials(material_type: str = "image", count: int = 20, offset: int = 
         material_type: 素材类型（image/video/voice/news）
         count: 每页数量
         offset: 偏移量
-        keyword: 关键词过滤（可选）
+        keyword: 关键词过滤（可选，客户端侧过滤）
         api_key: WECHAT_OA_SERVER_KEY
         relay_server: 中转服务器地址
 
@@ -694,11 +710,29 @@ def list_materials(material_type: str = "image", count: int = 20, offset: int = 
         "count": min(count, 20),
         "offset": offset,
     }
-    if keyword:
-        params["keyword"] = keyword
+    # 注意：服务器端的 list_materials() 不支持 keyword 参数
+    # 如果需要关键词过滤，在客户端侧进行
 
     url = f"{relay_server}/api/materials"
-    return _get(url, params, api_key, timeout=15)
+    result = _get(url, params, api_key, timeout=15)
+    
+    # 客户端侧关键词过滤
+    if keyword and result.get("success") and result.get("items"):
+        filtered_items = []
+        for item in result["items"]:
+            if material_type == "news":
+                for news_item in item.get("content", {}).get("news_item", []):
+                    if keyword.lower() in news_item.get("title", "").lower():
+                        filtered_items.append(item)
+                        break
+            else:
+                if keyword.lower() in item.get("media_id", "").lower() or \
+                   keyword.lower() in item.get("name", "").lower():
+                    filtered_items.append(item)
+        result["items"] = filtered_items
+        result["total"] = len(filtered_items)
+    
+    return result
 
 
 # ════════════════════════════════════════════════════════════════════════════

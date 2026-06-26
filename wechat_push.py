@@ -859,7 +859,7 @@ def _parse_css_rules(css_text, css_map):
 
 
 
-def _extract_digest(content, max_len=80):
+def _extract_digest(content, max_len=64):
     """
     Smart digest extraction from HTML content.
     Strategy:
@@ -1272,7 +1272,8 @@ def _draft_find_relay(keyword):
         for i, d in enumerate(drafts):
             item = d.get("content", {}).get("news_item", [{}])[0]
             print(f"  {i+1}. {item.get('title', '(无标题)')}  [media_id: {d.get('media_id', '')}]")
-        return drafts
+        # 返回统一格式
+        return {"success": True, "total": total, "drafts": drafts}
     else:
         raise Exception(f"relay 搜索草稿失败: {result.get('error', '未知错误')}")
 
@@ -1631,7 +1632,7 @@ def _draft_find_direct(keyword):
         offset += page_size
 
     kw_lower = keyword.lower()
-    matched = []
+    matched_items = []
     for item in all_items:
         media_id = item.get("media_id", "")
         articles = item.get("content", {}).get("news_item", [])
@@ -1641,16 +1642,16 @@ def _draft_find_direct(keyword):
         title = art.get("title", "")
         update_time = datetime.fromtimestamp(item.get("update_time", 0)).strftime("%Y-%m-%d %H:%M")
         if kw_lower in title.lower():
-            matched.append((title, update_time, media_id))
+            matched_items.append(item)
+            print(f"  [{len(matched_items)}] {title}  |  {update_time}  |  {media_id}")
 
-    if not matched:
+    if not matched_items:
         print(f"[草稿搜索] 关键词「{keyword}」未找到匹配草稿（共扫描 {len(all_items)} 篇）")
     else:
-        print(f"[草稿搜索] 关键词「{keyword}」，共找到 {len(matched)} 篇（共扫描 {len(all_items)} 篇）:\n")
-        for i, (title, update_time, media_id) in enumerate(matched):
-            print(f"  [{i+1}] {title}")
-            print(f"      {update_time}  |  {media_id}")
-    return matched
+        print(f"\n[草稿搜索] 关键词「{keyword}」，共找到 {len(matched_items)} 篇 (direct 模式)")
+
+    # 返回统一格式
+    return {"success": True, "total": len(matched_items), "drafts": matched_items}
 
 
 def draft_batch_del(media_ids):
