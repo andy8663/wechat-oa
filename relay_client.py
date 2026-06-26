@@ -451,6 +451,299 @@ def list_drafts(count: int = 10, offset: int = 0, api_key: str = "", relay_serve
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# 更新草稿（通过中转服务器）
+# ════════════════════════════════════════════════════════════════════════════
+
+def update_draft(media_id: str, title: str, content: str, author: str = "", digest: str = "",
+                    thumb_path: str = None, api_key: str = "", relay_server: str = "") -> dict:
+    """
+    更新已有草稿（通过中转服务器）
+
+    Args:
+        media_id: 草稿 media_id
+        title: 文章标题
+        content: 文章正文 HTML
+        author: 作者
+        digest: 摘要
+        thumb_path: 封面图本地路径（可选，会 base64 编码后发送）
+        api_key: WECHAT_OA_SERVER_KEY
+        relay_server: 中转服务器地址
+
+    Returns:
+        dict: {"success": True/False, "message": "..."}
+    """
+    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    # 构建请求体
+    payload = {
+        "appid": cfg.get("APP_ID", ""),
+        "appsecret": cfg.get("APP_SECRET", ""),
+        "title": title,
+        "content": content,
+        "author": author or cfg.get("author", "Woody"),
+        "digest": digest,
+    }
+
+    # 封面图：读取并 base64 编码
+    if thumb_path and os.path.exists(thumb_path):
+        try:
+            with open(thumb_path, 'rb') as f:
+                img_data = f.read()
+            payload["thumb_image"] = base64.b64encode(img_data).decode('utf-8')
+            payload["thumb_filename"] = os.path.basename(thumb_path)
+        except Exception as e:
+            print(f"[WARN] 封面图读取失败，将继续无封面更新: {e}")
+
+    url = f"{relay_server}/api/push/article/{media_id}"
+    result = _post(url, payload, api_key, timeout=30)
+
+    if result.get("success"):
+        return {"success": True, "message": result.get("message", "更新成功")}
+    else:
+        return {"success": False, "error": result.get("error", "未知错误")}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 删除草稿（通过中转服务器）
+# ════════════════════════════════════════════════════════════════════════════
+
+def delete_draft(media_id: str, api_key: str = "", relay_server: str = "") -> dict:
+    """
+    删除草稿（通过中转服务器）
+
+    Args:
+        media_id: 草稿 media_id
+        api_key: WECHAT_OA_SERVER_KEY
+        relay_server: 中转服务器地址
+
+    Returns:
+        dict: {"success": True/False, "message": "..."}
+    """
+    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    params = {
+        "appid": cfg.get("APP_ID", ""),
+        "appsecret": cfg.get("APP_SECRET", ""),
+    }
+
+    headers = {"X-API-Key": api_key}
+    url = f"{relay_server}/api/push/article/{media_id}"
+
+    try:
+        resp = requests.delete(url, headers=headers, params=params, timeout=15)
+        resp.raise_for_status()
+        result = resp.json()
+        if result.get("success"):
+            return {"success": True, "message": result.get("message", "删除成功")}
+        else:
+            return {"success": False, "error": result.get("error", "未知错误")}
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "error": f"网络请求失败: {e}"}
+    except json.JSONDecodeError:
+        return {"success": False, "error": f"服务器返回非 JSON 数据: {resp.text[:200]}"}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 搜索草稿（通过中转服务器）
+# ════════════════════════════════════════════════════════════════════════════
+
+def search_drafts(keyword: str, count: int = 20, offset: int = 0,
+                 api_key: str = "", relay_server: str = "") -> dict:
+    """
+    按标题关键词搜索草稿（通过中转服务器）
+
+    Args:
+        keyword: 搜索关键词
+        count: 拉取数量
+        offset: 偏移量
+        api_key: WECHAT_OA_SERVER_KEY
+        relay_server: 中转服务器地址
+
+    Returns:
+        dict: {"success": True/False, "drafts": [...], "total": N}
+    """
+    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    params = {
+        "appid": cfg.get("APP_ID", ""),
+        "appsecret": cfg.get("APP_SECRET", ""),
+        "keyword": keyword,
+        "count": min(count, 20),
+        "offset": offset,
+    }
+
+    url = f"{relay_server}/api/push/drafts"
+    return _get(url, params, api_key, timeout=15)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 上传素材（通过中转服务器）
+# ════════════════════════════════════════════════════════════════════════════
+
+def upload_material(file_path: str, material_type: str = "image",
+                   api_key: str = "", relay_server: str = "") -> dict:
+    """
+    上传永久素材（通过中转服务器）
+
+    Args:
+        file_path: 文件路径
+        material_type: 素材类型（image/voice/video）
+        api_key: WECHAT_OA_SERVER_KEY
+        relay_server: 中转服务器地址
+
+    Returns:
+        dict: {"success": True/False, "media_id": "...", "url": "..."}
+    """
+    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    if not os.path.exists(file_path):
+        return {"success": False, "error": f"文件不存在: {file_path}"}
+
+    # 读取文件并 base64 编码
+    try:
+        with open(file_path, 'rb') as f:
+            file_data = f.read()
+    except Exception as e:
+        return {"success": False, "error": f"读取文件失败: {e}"}
+
+    payload = {
+        "appid": cfg.get("APP_ID", ""),
+        "appsecret": cfg.get("APP_SECRET", ""),
+        "material_type": material_type,
+        "filename": os.path.basename(file_path),
+        "file_data": base64.b64encode(file_data).decode('utf-8'),
+    }
+
+    url = f"{relay_server}/api/material/upload"
+    result = _post(url, payload, api_key, timeout=60)
+
+    if result.get("success"):
+        return {
+            "success": True,
+            "media_id": result.get("media_id", ""),
+            "url": result.get("url", ""),
+        }
+    else:
+        return {"success": False, "error": result.get("error", "未知错误")}
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 获取素材总数（通过中转服务器）
+# ════════════════════════════════════════════════════════════════════════════
+
+def get_material_count(api_key: str = "", relay_server: str = "") -> dict:
+    """
+    获取各类永久素材总数（通过中转服务器）
+
+    Args:
+        api_key: WECHAT_OA_SERVER_KEY
+        relay_server: 中转服务器地址
+
+    Returns:
+        dict: {"success": True/False, "voice_count": N, "video_count": N, ...}
+    """
+    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    params = {
+        "appid": cfg.get("APP_ID", ""),
+        "appsecret": cfg.get("APP_SECRET", ""),
+    }
+
+    url = f"{relay_server}/api/material/count"
+    return _get(url, params, api_key, timeout=15)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 获取素材列表（通过中转服务器）
+# ════════════════════════════════════════════════════════════════════════════
+
+def list_materials(material_type: str = "image", count: int = 20, offset: int = 0,
+                  keyword: str = None, api_key: str = "", relay_server: str = "") -> dict:
+    """
+    批量获取永久素材列表（通过中转服务器）
+
+    Args:
+        material_type: 素材类型（image/video/voice/news）
+        count: 每页数量
+        offset: 偏移量
+        keyword: 关键词过滤（可选）
+        api_key: WECHAT_OA_SERVER_KEY
+        relay_server: 中转服务器地址
+
+    Returns:
+        dict: {"success": True/False, "items": [...], "total": N}
+    """
+    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    params = {
+        "appid": cfg.get("APP_ID", ""),
+        "appsecret": cfg.get("APP_SECRET", ""),
+        "material_type": material_type,
+        "count": min(count, 20),
+        "offset": offset,
+    }
+    if keyword:
+        params["keyword"] = keyword
+
+    url = f"{relay_server}/api/materials"
+    return _get(url, params, api_key, timeout=15)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 删除素材（通过中转服务器）
+# ════════════════════════════════════════════════════════════════════════════
+
+def delete_material(media_id: str, api_key: str = "", relay_server: str = "") -> dict:
+    """
+    删除永久素材（通过中转服务器）
+
+    Args:
+        media_id: 素材 media_id
+        api_key: WECHAT_OA_SERVER_KEY
+        relay_server: 中转服务器地址
+
+    Returns:
+        dict: {"success": True/False, "message": "..."}
+    """
+    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    params = {
+        "appid": cfg.get("APP_ID", ""),
+        "appsecret": cfg.get("APP_SECRET", ""),
+    }
+
+    headers = {"X-API-Key": api_key}
+    url = f"{relay_server}/api/material/{media_id}"
+
+    try:
+        resp = requests.delete(url, headers=headers, params=params, timeout=15)
+        resp.raise_for_status()
+        result = resp.json()
+        if result.get("success"):
+            return {"success": True, "message": result.get("message", "删除成功")}
+        else:
+            return {"success": False, "error": result.get("error", "未知错误")}
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "error": f"网络请求失败: {e}"}
+    except json.JSONDecodeError:
+        return {"success": False, "error": f"服务器返回非 JSON 数据: {resp.text[:200]}"}
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # CLI 入口（供命令行直接调用测试）
 # ════════════════════════════════════════════════════════════════════════════
 

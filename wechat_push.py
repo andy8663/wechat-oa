@@ -1201,6 +1201,182 @@ def _draft_list_direct(count=10, offset=0):
     return items
 
 
+# ═══════════════════════════════════════════════════════
+# Relay 模式：更新草稿
+# ═════════════════════════════════════════════════════════
+
+def _draft_update_relay(media_id, html_path, force_cover=False):
+    """relay 模式更新草稿"""
+    from relay_client import update_draft as _relay_update
+    title, content, style_content = parse_file(html_path)
+    print(f"[TITLE] {title}")
+    print(f"[LENGTH] {len(content)} chars")
+    if style_content:
+        print(f"[STYLE] 提取到 {len(style_content)} 字符 CSS 样式")
+
+    # 封面图：读取本地封面图（用于 relay 上传）
+    thumb_path = None
+    if force_cover:
+        try:
+            import tempfile
+            tmp_dir = tempfile.gettempdir()
+            thumb_path = os.path.join(tmp_dir, f"relay_cover_{int(os.path.getmtime(html_path))}.jpg")
+            if not os.path.exists(thumb_path):
+                generate_cover(title, thumb_path)
+                print(f"[COVER] 已生成本地封面图: {thumb_path}")
+        except Exception as e:
+            print(f"[WARN] 封面图生成失败，将继续无封面更新: {e}")
+
+    result = _relay_update(
+        media_id=media_id,
+        title=title,
+        content=content,
+        author=load_config().get("author", "Woody"),
+        digest="",
+        thumb_path=thumb_path,
+    )
+    if result.get("success"):
+        print(f"\n[OK] 草稿更新成功! (relay 模式)")
+        print(f"[MEDIA_ID] {media_id}")
+    else:
+        raise Exception(f"relay 更新草稿失败: {result.get('error', '未知错误')}")
+
+
+# ═══════════════════════════════════════════════════════
+# Relay 模式：删除草稿
+# ═════════════════════════════════════════════════════════
+
+def _draft_delete_relay(media_id):
+    """relay 模式删除草稿"""
+    from relay_client import delete_draft as _relay_delete
+    result = _relay_delete(media_id=media_id)
+    if result.get("success"):
+        print(f"\n[OK] 草稿已删除! (relay 模式)")
+        print(f"[MEDIA_ID] {media_id}")
+    else:
+        raise Exception(f"relay 删除草稿失败: {result.get('error', '未知错误')}")
+
+
+# ═══════════════════════════════════════════════════════
+# Relay 模式：搜索草稿
+# ═════════════════════════════════════════════════════════
+
+def _draft_find_relay(keyword):
+    """relay 模式按标题关键词搜索草稿"""
+    from relay_client import search_drafts as _relay_search
+    result = _relay_search(keyword=keyword, count=50)
+    if result.get("success"):
+        drafts = result.get("drafts", [])
+        total = result.get("total", 0)
+        print(f"\n[草稿搜索] 关键词「{keyword}」，共找到 {len(drafts)} 篇 (relay 模式)")
+        for i, d in enumerate(drafts):
+            item = d.get("content", {}).get("news_item", [{}])[0]
+            print(f"  {i+1}. {item.get('title', '(无标题)')}  [media_id: {d.get('media_id', '')}]")
+        return drafts
+    else:
+        raise Exception(f"relay 搜索草稿失败: {result.get('error', '未知错误')}")
+
+
+# ═══════════════════════════════════════════════════════
+# Relay 模式：上传素材
+# ═════════════════════════════════════════════════════════
+
+def _material_upload_relay(file_path):
+    """relay 模式上传永久素材"""
+    from relay_client import upload_material as _relay_upload
+    result = _relay_upload(file_path=file_path, material_type="image")
+    if result.get("success"):
+        media_id = result.get("media_id", "")
+        url = result.get("url", "")
+        print(f"[OK] 永久素材上传成功! (relay 模式)")
+        print(f"[MEDIA_ID] {media_id}")
+        if url:
+            print(f"[URL] {url}")
+        return media_id
+    else:
+        raise Exception(f"relay 上传素材失败: {result.get('error', '未知错误')}")
+
+
+# ═══════════════════════════════════════════════════════
+# Relay 模式：获取素材总数
+# ═════════════════════════════════════════════════════════
+
+def _material_count_relay():
+    """relay 模式获取各类永久素材总数"""
+    from relay_client import get_material_count as _relay_count
+    result = _relay_count()
+    if result.get("success"):
+        voice_count = result.get("voice_count", 0)
+        video_count = result.get("video_count", 0)
+        image_count = result.get("image_count", 0)
+        news_count = result.get("news_count", 0)
+        total = voice_count + video_count + image_count + news_count
+
+        print(f"\n[永久素材统计] (relay 模式)")
+        print(f"  语音: {voice_count}")
+        print(f"  视频: {video_count}")
+        print(f"  图片: {image_count}")
+        print(f"  图文: {news_count}")
+        print(f"  ─────────")
+        print(f"  合计: {total}")
+        return result
+    else:
+        raise Exception(f"relay 获取素材总数失败: {result.get('error', '未知错误')}")
+
+
+# ═══════════════════════════════════════════════════════
+# Relay 模式：获取素材列表
+# ═════════════════════════════════════════════════════════
+
+def _material_list_relay(mtype="image", count=20, offset=0, keyword=None):
+    """relay 模式批量获取永久素材列表"""
+    from relay_client import list_materials as _relay_list
+    result = _relay_list(material_type=mtype, count=count, offset=offset, keyword=keyword)
+    if result.get("success"):
+        items = result.get("items", [])
+        total = result.get("total", 0)
+
+        type_label = {"image": "图片", "video": "视频", "voice": "语音", "news": "图文"}
+        label = type_label.get(mtype, mtype)
+        kw_note = f"（关键词「{keyword}」过滤后）" if keyword else ""
+
+        print(f"\n[永久素材列表] 类型:{label}  共{total}个{kw_note} (relay 模式, 显示{len(items)}个):\n")
+        for i, item in enumerate(items):
+            media_id = item.get("media_id", "N/A")
+            update_time = datetime.fromtimestamp(item.get("update_time", 0)).strftime("%Y-%m-%d %H:%M")
+
+            if mtype == "image":
+                name = item.get("name", "N/A")
+                url_out = item.get("url", "")
+                print(f"  [{i+1}] {name}  |  {update_time}  |  {media_id}")
+                if url_out:
+                    print(f"      URL: {url_out}")
+            elif mtype == "news":
+                articles = item.get("content", {}).get("news_item", [])
+                if articles:
+                    title = articles[0].get("title", "无标题")
+                    print(f"  [{i+1}] {title}  |  {update_time}  |  {media_id}")
+            print()
+        return items
+    else:
+        raise Exception(f"relay 获取素材列表失败: {result.get('error', '未知错误')}")
+
+
+# ═══════════════════════════════════════════════════════
+# Relay 模式：删除素材
+# ═════════════════════════════════════════════════════════
+
+def _material_delete_relay(media_id):
+    """relay 模式删除永久素材"""
+    from relay_client import delete_material as _relay_delete
+    result = _relay_delete(media_id=media_id)
+    if result.get("success"):
+        print(f"\n[OK] 素材已删除! (relay 模式)")
+        print(f"[MEDIA_ID] {media_id}")
+    else:
+        raise Exception(f"relay 删除素材失败: {result.get('error', '未知错误')}")
+
+
 # ========== 草稿操作 ==========
 
 
@@ -1248,13 +1424,38 @@ def _get_draft_thumb_media_id(access_token, media_id):
 
 
 def draft_update(media_id, html_path, force_cover=False):
-    """更新已有草稿
+    """
+    更新已有草稿
 
     Args:
         media_id: 草稿 media_id
         html_path: HTML 文件路径
         force_cover: 是否强制重新生成封面，默认 False（复用已有封面）
     """
+    cfg = load_config()
+    push_mode = cfg.get("PUSH_MODE", "direct")
+
+    # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
+    if push_mode == "hybrid":
+        try:
+            return _draft_update_direct(media_id, html_path, force_cover)
+        except Exception as e:
+            if _is_ip_whitelist_error(e):
+                print(f"[HYBRID] Direct 模式因 IP 白名单限制失败，自动切换到 relay 模式...")
+                return _draft_update_relay(media_id, html_path, force_cover)
+            else:
+                raise
+
+    # ── relay 模式 ──
+    if push_mode == "relay":
+        return _draft_update_relay(media_id, html_path, force_cover)
+
+    # ── direct 模式（默认）────────────────────────────────────
+    return _draft_update_direct(media_id, html_path, force_cover)
+
+
+def _draft_update_direct(media_id, html_path, force_cover=False):
+    """direct 模式更新草稿"""
     title, content, style_content = parse_file(html_path)
     print(f"[TITLE] {title}")
     print(f"[LENGTH] {len(content)} chars")
@@ -1332,6 +1533,30 @@ def draft_list(count=10, offset=0):
 
 def draft_delete(media_id):
     """删除草稿"""
+    cfg = load_config()
+    push_mode = cfg.get("PUSH_MODE", "direct")
+
+    # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
+    if push_mode == "hybrid":
+        try:
+            return _draft_delete_direct(media_id)
+        except Exception as e:
+            if _is_ip_whitelist_error(e):
+                print(f"[HYBRID] Direct 模式因 IP 白名单限制失败，自动切换到 relay 模式...")
+                return _draft_delete_relay(media_id)
+            else:
+                raise
+
+    # ── relay 模式 ──
+    if push_mode == "relay":
+        return _draft_delete_relay(media_id)
+
+    # ── direct 模式（默认）────────────────────────────────────
+    return _draft_delete_direct(media_id)
+
+
+def _draft_delete_direct(media_id):
+    """direct 模式删除草稿"""
     access_token = get_access_token()
     url = f"{API_DRAFT_DELETE}?access_token={access_token}"
 
@@ -1352,6 +1577,30 @@ def draft_find(keyword):
     Args:
         keyword: 搜索关键词（不区分大小写）
     """
+    cfg = load_config()
+    push_mode = cfg.get("PUSH_MODE", "direct")
+
+    # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
+    if push_mode == "hybrid":
+        try:
+            return _draft_find_direct(keyword)
+        except Exception as e:
+            if _is_ip_whitelist_error(e):
+                print(f"[HYBRID] Direct 模式因 IP 白名单限制失败，自动切换到 relay 模式...")
+                return _draft_find_relay(keyword)
+            else:
+                raise
+
+    # ── relay 模式 ──
+    if push_mode == "relay":
+        return _draft_find_relay(keyword)
+
+    # ── direct 模式（默认）────────────────────────────────────
+    return _draft_find_direct(keyword)
+
+
+def _draft_find_direct(keyword):
+    """direct 模式按标题关键词搜索草稿"""
     access_token = get_access_token()
     url = f"{API_DRAFT_BATCHGET}?access_token={access_token}"
 
@@ -1466,6 +1715,30 @@ def published_list(count=10, offset=0):
 
 def material_upload(image_path):
     """上传永久素材（图片）"""
+    cfg = load_config()
+    push_mode = cfg.get("PUSH_MODE", "direct")
+
+    # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
+    if push_mode == "hybrid":
+        try:
+            return _material_upload_direct(image_path)
+        except Exception as e:
+            if _is_ip_whitelist_error(e):
+                print(f"[HYBRID] Direct 模式因 IP 白名单限制失败，自动切换到 relay 模式...")
+                return _material_upload_relay(image_path)
+            else:
+                raise
+
+    # ── relay 模式 ──
+    if push_mode == "relay":
+        return _material_upload_relay(image_path)
+
+    # ── direct 模式（默认）────────────────────────────────────
+    return _material_upload_direct(image_path)
+
+
+def _material_upload_direct(image_path):
+    """direct 模式上传永久素材（图片）"""
     access_token = get_access_token()
 
     if not Path(image_path).exists():
@@ -1491,6 +1764,30 @@ def material_upload(image_path):
 
 def material_count():
     """获取各类永久素材总数"""
+    cfg = load_config()
+    push_mode = cfg.get("PUSH_MODE", "direct")
+
+    # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
+    if push_mode == "hybrid":
+        try:
+            return _material_count_direct()
+        except Exception as e:
+            if _is_ip_whitelist_error(e):
+                print(f"[HYBRID] Direct 模式因 IP 白名单限制失败，自动切换到 relay 模式...")
+                return _material_count_relay()
+            else:
+                raise
+
+    # ── relay 模式 ──
+    if push_mode == "relay":
+        return _material_count_relay()
+
+    # ── direct 模式（默认）────────────────────────────────────
+    return _material_count_direct()
+
+
+def _material_count_direct():
+    """direct 模式获取各类永久素材总数"""
     access_token = get_access_token()
     url = f"{API_MATERIAL_COUNT}?access_token={access_token}"
     resp = errwrap_get(url)
@@ -1525,6 +1822,30 @@ def material_list(mtype="image", count=20, offset=0, keyword=None):
         offset: 偏移量，默认0
         keyword: 关键词过滤（匹配名称或标题），默认 None 不过滤
     """
+    cfg = load_config()
+    push_mode = cfg.get("PUSH_MODE", "direct")
+
+    # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
+    if push_mode == "hybrid":
+        try:
+            return _material_list_direct(mtype, count, offset, keyword)
+        except Exception as e:
+            if _is_ip_whitelist_error(e):
+                print(f"[HYBRID] Direct 模式因 IP 白名单限制失败，自动切换到 relay 模式...")
+                return _material_list_relay(mtype, count, offset, keyword)
+            else:
+                raise
+
+    # ── relay 模式 ──
+    if push_mode == "relay":
+        return _material_list_relay(mtype, count, offset, keyword)
+
+    # ── direct 模式（默认）────────────────────────────────────
+    return _material_list_direct(mtype, count, offset, keyword)
+
+
+def _material_list_direct(mtype="image", count=20, offset=0, keyword=None):
+    """direct 模式批量获取永久素材列表"""
     access_token = get_access_token()
     url = f"{API_MATERIAL_BATCHGET}?access_token={access_token}"
 
@@ -1689,7 +2010,31 @@ def material_del_interactive(mtype="image"):
 
 
 def _do_del_material(media_id):
-    """真正执行删除接口调用"""
+    """真正执行删除素材（支持 hybrid 模式）"""
+    cfg = load_config()
+    push_mode = cfg.get("PUSH_MODE", "direct")
+
+    # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
+    if push_mode == "hybrid":
+        try:
+            return _material_delete_direct(media_id)
+        except Exception as e:
+            if _is_ip_whitelist_error(e):
+                print(f"[HYBRID] Direct 模式因 IP 白名单限制失败，自动切换到 relay 模式...")
+                return _material_delete_relay(media_id)
+            else:
+                raise
+
+    # ── relay 模式 ──
+    if push_mode == "relay":
+        return _material_delete_relay(media_id)
+
+    # ── direct 模式（默认）────────────────────────────
+    return _material_delete_direct(media_id)
+
+
+def _material_delete_direct(media_id):
+    """direct 模式真正执行删除接口调用"""
     access_token = get_access_token()
     url = f"{API_MATERIAL_DEL}?access_token={access_token}"
     json_data = json.dumps({"media_id": media_id}, ensure_ascii=False).encode('utf-8')
