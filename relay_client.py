@@ -23,7 +23,7 @@ def load_config():
         "APP_SECRET": "",
         "author": "Woody",
         "PUSH_MODE": "direct",
-        "RELAY_SERVER": "http://120.79.2.44",
+        "WECHAT_OA_SERVER": "http://120.79.2.44",
         "WECHAT_OA_SERVER_KEY": "",
     }
     if CONFIG_FILE.exists():
@@ -42,7 +42,7 @@ def _get_cfg_params(api_key: str, relay_server: str) -> tuple:
     if not api_key:
         api_key = cfg.get("WECHAT_OA_SERVER_KEY", "")
     if not relay_server:
-        relay_server = cfg.get("RELAY_SERVER", "http://120.79.2.44")
+        relay_server = cfg.get("WECHAT_OA_SERVER", "http://120.79.2.44")
     return api_key, relay_server.rstrip('/'), cfg
 
 

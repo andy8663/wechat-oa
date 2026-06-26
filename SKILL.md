@@ -175,7 +175,7 @@ cp config.example.json config.json
   "APP_SECRET": "00000000000000000000000000000000",
   "author": "龙虾",
   "PUSH_MODE": "direct",
-  "RELAY_SERVER": "http://120.79.2.44",
+  "WECHAT_OA_SERVER": "http://120.79.2.44",
   "WECHAT_OA_SERVER_KEY": ""
 }
 ```
