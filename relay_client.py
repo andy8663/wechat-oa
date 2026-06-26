@@ -54,6 +54,13 @@ def _post(url: str, payload: dict, api_key: str, timeout: int = 30) -> dict:
     }
     try:
         resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        # 捕获标准 HTTP 402（AI 付协议）
+        if resp.status_code == 402:
+            return {
+                "status_code": 402,
+                "payment_needed": resp.headers.get("Payment-Needed", ""),
+                "body": resp.text,
+            }
         resp.raise_for_status()
         return resp.json()
     except requests.exceptions.RequestException as e:
@@ -224,6 +231,18 @@ def execute_push_article(title: str, content: str, order_id: str,
 # 兼容旧版：一站式推送（自动判断免费/收费模式）
 # ════════════════════════════════════════════════════════════════════════════
 
+def _extract_trade_no(output: str) -> str:
+    """从 alipay-bot 输出中提取 trade_no"""
+    import re
+    match = re.search(r'交易号\s*[:：]\s*(\d{32})', output)
+    if match:
+        return match.group(1)
+    match = re.search(r'tradeNo["\']?\s*[:=]\s*["\']?(\d{32})', output)
+    if match:
+        return match.group(1)
+    return ""
+
+
 def push_article(title: str, content: str, author: str = "", digest: str = "",
                  thumb_path: str = None, api_key: str = "", relay_server: str = "") -> dict:
     """
@@ -231,7 +250,7 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
     
     兼容模式：自动检测是否收费
     - 免费模式：直接推送
-    - 收费模式：返回订单信息，需要调用者分步执行（create_order → execute）
+    - 收费模式：返回标准 HTTP 402 的 Payment-Needed，调用 alipay-bot 支付
     
     Args:
         title: 文章标题
@@ -244,37 +263,159 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
     
     Returns:
         dict: 免费模式: {"success": True, "media_id": "..."}
-              收费模式: {"success": False, "charge_required": True, "order_info": {...}}
+              收费模式: {"success": False, "charge_required": True, "trade_no": "...", "alipay_bot_output": "..."}
               失败: {"success": False, "error": "..."}
     """
+    import subprocess
+    import time
+
     api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
-    # 先检查是否收费
-    info = get_push_info(api_key, relay_server)
-    if info.get("charge_enabled"):
-        # 收费模式：需要分步执行（create_order → execute）
-        order_result = create_push_order(
-            title=title, content=content, author=author, digest=digest,
-            thumb_path=thumb_path, api_key=api_key, relay_server=relay_server,
-        )
-        if not order_result.get("success"):
-            return {"success": False, "error": order_result.get("error", "创建订单失败")}
-        
+    # 构建请求体
+    payload = {
+        "appid": cfg.get("APP_ID", ""),
+        "appsecret": cfg.get("APP_SECRET", ""),
+        "title": title,
+        "content": content,
+        "author": author or cfg.get("author", "Woody"),
+        "digest": digest,
+    }
+
+    # 封面图：读取并 base64 编码
+    if thumb_path and os.path.exists(thumb_path):
+        try:
+            with open(thumb_path, 'rb') as f:
+                img_data = f.read()
+            payload["thumb_image"] = base64.b64encode(img_data).decode('utf-8')
+            payload["thumb_filename"] = os.path.basename(thumb_path)
+        except Exception as e:
+            print(f"[WARN] 封面图读取失败，将继续无封面推送: {e}")
+
+    url = f"{relay_server}/api/push/article"
+    result = _post(url, payload, api_key)
+
+    # 标准 HTTP 402：需要支付
+    if result.get("status_code") == 402:
+        payment_needed = result.get("payment_needed", "")
+        if not payment_needed:
+            return {"success": False, "error": "服务端返回 402 但未提供 Payment-Needed"}
+
+        # 保存 Payment-Needed 到文件
+        file_name = f"402_needed_{int(time.time())}.txt"
+        file_path = f"/tmp/{file_name}"
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(payment_needed)
+        except Exception as e:
+            return {"success": False, "error": f"保存 Payment-Needed 失败: {e}"}
+
+        # 调用 alipay-bot 发起支付
+        try:
+            proc = subprocess.run(
+                ["alipay-bot", "--", "402-buyer-pay", "-f", file_path],
+                capture_output=True, text=True, timeout=60
+            )
+            output = proc.stdout + proc.stderr
+            if proc.returncode != 0 and not output:
+                output = proc.stderr or "alipay-bot 执行失败"
+        except Exception as e:
+            return {"success": False, "error": f"调用 alipay-bot 失败: {e}"}
+
+        # 提取 trade_no
+        trade_no = _extract_trade_no(output)
+
         return {
             "success": False,
             "charge_required": True,
-            "order_info": order_result,
-            "message": f"推送需要支付 ¥{order_result.get('amount', 0.01)}，请完成支付后再执行推送",
+            "trade_no": trade_no,
+            "payment_needed_file": file_path,
+            "payload": payload,
+            "alipay_bot_output": output,
+            "message": "请扫码完成支付，支付完成后告诉我'已支付'，我将继续推送",
         }
 
-    # 免费模式：直接调用 execute（不带 order_id）
-    return execute_push_article(
-        title=title, content=content, order_id="",
-        author=author, digest=digest, thumb_path=thumb_path,
-        api_key=api_key, relay_server=relay_server,
-    )
+    # 正常返回
+    if result.get("success"):
+        return {"success": True, "media_id": result.get("media_id", ""), "message": result.get("message", "")}
+    else:
+        return {"success": False, "error": result.get("error", "未知错误")}
+
+
+def finish_push(trade_no: str, payload: dict, api_key: str = "", relay_server: str = "") -> dict:
+    """
+    支付完成后，查询支付状态并自动重试推送
+    
+    Args:
+        trade_no: 交易号（从 alipay-bot 输出中提取）
+        payload: 文章推送的请求体（从 push_article 返回的 payload 中传入）
+        api_key: WECHAT_OA_SERVER_KEY
+        relay_server: 中转服务器地址
+    
+    Returns:
+        dict: {"success": True/False, "media_id": "...", "message": "..."}
+    """
+    import subprocess
+
+    api_key, relay_server, _ = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+    if not trade_no:
+        return {"success": False, "error": "trade_no 不能为空"}
+
+    resource_url = f"{relay_server}/api/push/article"
+    data = json.dumps(payload)
+
+    # 调用 alipay-bot 查询支付状态并自动重试（携带 Payment-Proof）
+    try:
+        proc = subprocess.run(
+            [
+                "alipay-bot", "402-query-payment-status",
+                "-t", trade_no,
+                "-r", resource_url,
+                "-m", "POST",
+                "-d", data,
+                "-H", f"X-API-Key:{api_key}",
+            ],
+            capture_output=True, text=True, timeout=60
+        )
+        output = proc.stdout + proc.stderr
+    except Exception as e:
+        return {"success": False, "error": f"调用 alipay-bot 查询失败: {e}"}
+
+    # 解析 alipay-bot 输出
+    try:
+        result = json.loads(output)
+    except json.JSONDecodeError:
+        # 可能不是 JSON，尝试从文本中提取
+        return {
+            "success": False,
+            "error": f"alipay-bot 返回非 JSON 数据: {output[:500]}",
+        }
+
+    if not result.get("success"):
+        return {
+            "success": False,
+            "error": result.get("errorMsg", "支付查询失败"),
+        }
+
+    # 提取资源响应
+    resource_resp = result.get("resourceResponse", {})
+    if resource_resp.get("status") == 200:
+        body = resource_resp.get("body", {})
+        if body.get("success") or body.get("media_id"):
+            return {
+                "success": True,
+                "media_id": body.get("media_id", ""),
+                "message": body.get("message", "推送成功"),
+            }
+        return {"success": False, "error": body.get("error", "推送失败")}
+    else:
+        return {
+            "success": False,
+            "error": f"资源请求失败: HTTP {resource_resp.get('status', '未知')}",
+        }
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -367,8 +508,8 @@ if __name__ == "__main__":
         result = push_article(title, content, args.author, args.digest, args.thumb or None)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if result.get("charge_required"):
-            print(f"\n[提示] 收费模式：请完成支付后，用以下命令执行推送：")
-            print(f"  python relay_client.py execute {args.html_path} --order-id {result['order_info']['order_id']} --mock-pay")
+            print(f"\n[提示] 收费模式：请完成支付后，告诉我'已支付'，我将继续推送")
+            print(f"  trade_no: {result.get('trade_no', 'N/A')}")
 
     elif args.command == "info":
         result = get_push_info()

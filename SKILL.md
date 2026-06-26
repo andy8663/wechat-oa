@@ -81,7 +81,7 @@ Before creating or updating any WeChat article, AI MUST read `design.md` and str
 
 ## 中继模式 (Relay Mode) / AI 收支付
 
-当 `config.json` 中 `PUSH_MODE` 设为 `relay` 时，文章通过公网服务器（wechat-oa-server）中转推送到微信公众号。中继模式支持 **支付宝 AI 收** 支付功能。
+当 `config.json` 中 `PUSH_MODE` 设为 `relay` 时，文章通过公网服务器（wechat-oa-server）中转推送到微信公众号。中继模式支持 **支付宝 AI 收** 标准协议（HTTP 402 + Payment-Needed）。
 
 ### 推送流程（免费模式）
 
@@ -89,45 +89,43 @@ Before creating or updating any WeChat article, AI MUST read `design.md` and str
 python wechat_push.py create article.html
 ```
 
-### 推送流程（收费模式 / AI 收）
+### 推送流程（收费模式 / AI 收标准协议）
 
-中继服务器开启收费时，推送需要分 3 步：
+中继服务器开启收费时，服务端返回标准 HTTP 402 + `Payment-Needed` 响应头。客户端自动调用 `alipay-bot` 处理支付流程：
 
 ```text
-1. 创建订单 → 获取 Payment-Needed
-2. 用户完成支付宝支付 → 获取 payment_proof
-3. 执行推送 → 带 order_id + payment_proof
+1. 调用 push_article → 服务端返回 HTTP 402 + Payment-Needed
+2. 客户端保存 Payment-Needed → 调用 alipay-bot -- 402-buyer-pay 发起支付
+3. 用户扫码完成支付 → 告诉 Agent "已支付"
+4. 调用 finish_push(trade_no, payload) → alipay-bot 自动携带 Payment-Proof 重试
+5. 服务端验证 Payment-Proof → 执行推送 → 返回草稿 media_id
 ```
 
-**步骤 1：创建订单**
+**步骤 1：一键推送（自动检测收费模式）**
 
 ```bash
-python relay_client.py order
+python relay_client.py push article.html
 ```
 
-返回示例：
-```json
-{
-  "order_id": "PA_1750932000_a1b2c3d4",
-  "amount": 0.01,
-  "currency": "CNY",
-  "payment_needed": "base64url_encoded_json...",
-  "payment_method": "alipay_aipay"
-}
-```
+- 免费模式：直接推送，返回 `{"success": True, "media_id": "..."}`
+- 收费模式：返回 `{"charge_required": True, "trade_no": "...", "alipay_bot_output": "..."}`，并显示支付二维码
 
-**步骤 2：完成支付（获取 payment_proof）**
+**步骤 2：用户扫码支付**
 
-在 WorkBuddy 中，Agent 会调用 `alipay-payment-skill` 处理 `Payment-Needed` 完成支付。
+`alipay-bot` 输出中包含支付链接和二维码，用户扫码完成支付。
 
-**步骤 3：执行推送（带订单验证）**
+**步骤 3：支付完成后继续推送**
 
-```bash
-# 真实支付（带 payment_proof）
-python relay_client.py execute article.html --order-id PA_xxx --payment-proof "{...}"
+用户告知"已支付"后，Agent 调用 `finish_push(trade_no, payload)` 自动完成推送：
 
-# 调试模式（mock_pay，跳过真实支付验证）
-python relay_client.py execute article.html --order-id PA_xxx --mock-pay
+```python
+from relay_client import finish_push
+
+result = finish_push(
+    trade_no="20260626008281174923040000030274",
+    payload={"appid": "...", "appsecret": "...", "title": "...", "content": "..."},
+)
+# 返回 {"success": True, "media_id": "..."}
 ```
 
 ### 快捷调试命令
