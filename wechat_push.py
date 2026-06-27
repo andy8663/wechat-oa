@@ -92,6 +92,55 @@ def hex_to_rgb(hex_color: str):
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 
+def _get_font(size, preferred=None):
+    """
+    跨平台获取支持中文的字体。
+    优先尝试 preferred 列表中的字体路径，然后按平台尝试系统字体。
+    全部失败则回退到 Pillow 默认字体（可能不支持中文）。
+    """
+    import sys
+    candidates = []
+    if preferred:
+        if isinstance(preferred, str):
+            candidates.append(preferred)
+        else:
+            candidates.extend(preferred)
+
+    if sys.platform == "win32":
+        candidates += [
+            "C:/Windows/Fonts/msyh.ttc",
+            "C:/Windows/Fonts/msyhbd.ttc",
+            "C:/Windows/Fonts/simhei.ttf",
+            "C:/Windows/Fonts/consola.ttf",
+            "C:/Windows/Fonts/arial.ttf",
+        ]
+    elif sys.platform == "darwin":
+        candidates += [
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/STHeiti Medium.ttc",
+            "/Library/Fonts/Microsoft/msyh.ttc",
+        ]
+    else:
+        # Linux
+        candidates += [
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+            "/usr/share/fonts/wqy-microhei/wqy-microhei.ttc",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        ]
+
+    for fp in candidates:
+        try:
+            return ImageFont.truetype(fp, size)
+        except Exception:
+            continue
+
+    # 全部失败：回退到 Pillow 默认字体
+    return ImageFont.load_default()
+
+
 def generate_cover(title: str, output_path: str) -> str:
     """
     根据文章标题生成科技风封面图
@@ -142,10 +191,7 @@ def generate_cover(title: str, output_path: str) -> str:
         draw.line([(x, 0), (x, HEIGHT)], fill=(int(r*alpha_ratio), int(g*alpha_ratio), int(b*alpha_ratio)))
 
     # ---------- 6. 二进制/十六进制数字装饰（左上/右下角） ----------
-    try:
-        font_hex = ImageFont.truetype('C:/Windows/Fonts/consola.ttf', 9)
-    except:
-        font_hex = ImageFont.load_default()
+    font_hex = _get_font(9)
 
     hex_nums = ['0x00FF', '0xA3', '0x7E', '0x1B', '0xF0', '0x3C',
                 '10110', '00101', '11100', '01010', '11001', '00111']
@@ -178,14 +224,9 @@ def generate_cover(title: str, output_path: str) -> str:
         draw.ellipse([(x1-2, y1-2), (x1+2, y1+2)], fill=(0, 150, 230))
 
     # ---------- 8. 中心主文字区域（带发光效果） ----------
-    try:
-        font_title = ImageFont.truetype('C:/Windows/Fonts/msyhbd.ttc', 32)
-        font_subtitle = ImageFont.truetype('C:/Windows/Fonts/msyh.ttc', 16)
-        font_label = ImageFont.truetype('C:/Windows/Fonts/arial.ttf', 11)
-    except Exception:
-        font_title = ImageFont.load_default()
-        font_subtitle = font_title
-        font_label = font_title
+    font_title = _get_font(32)
+    font_subtitle = _get_font(16)
+    font_label = _get_font(11)
 
     # 标题处理（最多28字显示）
     display_title = title
@@ -714,7 +755,7 @@ def generate_cover_and_upload(access_token, title, html_path):
 
     封面图统一保存到 skill 目录下的 TMP/ 子目录（已加入 .gitignore），
     避免中文路径问题，不污染 Git。
-    如果封面图生成失败，返回空字符串；草稿仍可创建（需手动补封面）。
+    如果封面图生成或上传失败，将直接报错退出（微信 API 强制要求封面图）。
     """
     skill_dir = Path(__file__).parent
     tmp_dir = skill_dir / "TMP"
@@ -724,25 +765,26 @@ def generate_cover_and_upload(access_token, title, html_path):
     cover_path = tmp_dir / f"cover_{safe_name}.png"
 
     print(f"[COVER] 正在生成封面图...")
-    cover_ok = False
     try:
         generate_cover(title, str(cover_path))
-        print(f"[OK] 封面图已保存: {cover_path}")
-        cover_ok = True
     except Exception as e:
-        print(f"[WARN] 封面图生成失败: {e}，将跳过封面（需手动补封面图）")
+        raise Exception(
+            f"封面图生成失败: {e}\n"
+            f"解决方法：\n"
+            f"  1. 确认已安装 Pillow: pip install Pillow\n"
+            f"  2. 确认系统中有中文字体（Windows: msyh.ttc; Linux: wqy-microhei.ttc）\n"
+            f"  3. 可手动放置封面图到 skill/TMP/ 目录"
+        )
 
-    thumb_media_id = ""
-    if cover_ok and cover_path.exists():
-        print("[IMG] 正在上传封面图...")
-        try:
-            thumb_media_id = upload_image(access_token, str(cover_path))
-            print(f"[OK] 封面图已上传: {thumb_media_id}")
-        except Exception as e:
-            print(f"[WARN] 封面上传失败: {e}，将跳过封面")
-    else:
-        print("[WARN] 封面图文件不存在，跳过上传")
+    print(f"[OK] 封面图已保存: {cover_path}")
+    print("[IMG] 正在上传封面图...")
 
+    try:
+        thumb_media_id = upload_image(access_token, str(cover_path))
+    except Exception as e:
+        raise Exception(f"封面图上传到微信素材库失败: {e}")
+
+    print(f"[OK] 封面图已上传: {thumb_media_id}")
     return thumb_media_id
 
 
@@ -1118,16 +1160,23 @@ def _draft_create_relay(html_path, cfg):
         print(f"[STYLE] 提取到 {len(style_content)} 字符 CSS 样式")
 
     # 生成本地封面图（用于 relay 上传）
-    thumb_path = None
-    try:
-        import tempfile
-        tmp_dir = tempfile.gettempdir()
-        thumb_path = os.path.join(tmp_dir, f"relay_cover_{int(os.path.getmtime(html_path))}.jpg")
-        if not os.path.exists(thumb_path):
+    # 封图生成失败时直接报错，不继续（微信 API 强制要求封面图）
+    import tempfile
+    tmp_dir = tempfile.gettempdir()
+    thumb_path = os.path.join(tmp_dir, f"relay_cover_{int(os.path.getmtime(html_path))}.jpg")
+    if not os.path.exists(thumb_path):
+        print(f"[COVER] 正在生成封面图...")
+        try:
             generate_cover(title, thumb_path)
-            print(f"[COVER] 已生成本地封面图: {thumb_path}")
-    except Exception as e:
-        print(f"[WARN] 封面图生成失败，将继续无封面推送: {e}")
+        except Exception as e:
+            raise Exception(
+                f"封面图生成失败: {e}\n"
+                f"封面图为微信 API 必填项，无法继续。\n"
+                f"解决方法：确认 Pillow 已安装且有中文字体支持。"
+            )
+        print(f"[COVER] 已生成本地封面图: {thumb_path}")
+    else:
+        print(f"[COVER] 使用已缓存的封面图: {thumb_path}")
 
     result = _relay_push(
         title=title,
