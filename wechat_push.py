@@ -864,7 +864,7 @@ def _parse_css_rules(css_text, css_map):
 
 
 
-def _extract_digest(content, max_len=64):
+def _extract_digest(content, max_len=120):
     """
     Smart digest extraction from HTML content.
     Strategy:
@@ -1034,6 +1034,10 @@ def build_article(title, content, thumb_media_id, style_content="", author=None)
 
     # 摘要：智能提取
     digest = _extract_digest(content)
+
+    # 微信 API 硬性限制：digest 不超过 120 字符（中文/英文/数字均计 1 字符）
+    if len(digest) > 120:
+        digest = digest[:120]
 
     return {
         "title": title,

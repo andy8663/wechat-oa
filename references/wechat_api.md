@@ -57,7 +57,7 @@ Content-Type: application/json; charset=utf-8
     {
       "title": "文章标题",
       "author": "作者名",
-      "digest": "摘要（不超过54字）",
+      "digest": "摘要（不超过120字符）",
       "content": "<!DOCTYPE html><html>...</html>",
       "thumb_media_id": "封面图 media_id",
       "content_source_url": "",
@@ -74,6 +74,7 @@ Content-Type: application/json; charset=utf-8
 ```
 
 常见错误：
+- `45004` — digest 超过 120 字符（size out of limit）
 - `40007` — 无效的 `thumb_media_id`（必须先上传封面图）
 - `41006` — 缺少 `thumb_media_id`
 - `40001` — access_token 无效或已过期
