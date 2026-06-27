@@ -156,11 +156,38 @@ python relay_client.py list
 
 调用微信 API 前，必须将服务器 IP 加入白名单：You must add your server's public IP to the whitelist before calling WeChat APIs:
 
-(1) 进入 **设置与开发 → 安全中心** / Go to **Settings & Development → Security Center**
-(2) 点击 **IP 白名单** / Click **IP Whitelist**
-(3) 添加你的服务器公网 IP（查看当前 IP：`curl ifconfig.me`）/ Add your server's public IP (check: `curl ifconfig.me`)
+| 推送模式 | 需要加入白名单的 IP | 说明 |
+|---------|------------------|------|
+| `direct` | 本机出口 IP | 直连微信 API，配本机 IP |
+| `hybrid` | 本机出口 IP | 优先直连，失败自动切中转 |
+| `relay` | **服务器 IP** `120.79.2.44` | 通过中转服务器调用微信 API |
+
+**(1) 直连 / 混合模式 — 配置本机 IP：**
+
+```bash
+# 查看本机出口 IP
+curl ifconfig.me
+```
+
+**(2) 中转模式 — 配置服务器 IP：**
+
+无需查看本机 IP，直接将固定服务器 IP 加入白名单：
+
+```
+120.79.2.44
+```
+
+**(3) 登录微信公众平台配置：**
+
+进入 **设置与开发 → 安全中心 → IP 白名单 → 点击「配置」**
+
+- 将对应模式的 IP 填入白名单
+- 多个 IP 用回车分隔
+- 保存
 
 > ⚠️ **不添加 IP 白名单会导致 API 调用失败！** / Not adding the IP whitelist will cause all API calls to fail!
+> 
+> 💡 **不方便配本机 IP 白名单？** 使用 `hybrid` 或 `relay` 模式，只需将服务器 IP `120.79.2.44` 加入白名单即可。
 
 ### 3. 配置凭证 / Configure Credentials
 
@@ -178,11 +205,19 @@ cp config.example.json config.json
   "APP_ID": "wx0000000000000000",
   "APP_SECRET": "00000000000000000000000000000000",
   "author": "龙虾",
-  "PUSH_MODE": "direct",
+  "PUSH_MODE": "hybrid",
   "WECHAT_OA_SERVER": "http://120.79.2.44",
   "WECHAT_OA_SERVER_KEY": ""
 }
 ```
+
+`PUSH_MODE` 说明 / Mode description:
+
+| 模式 | 说明 | IP 白名单配置 | 适用场景 |
+|------|------|--------------|----------|
+| `direct` | 直连微信官方 API | 本机 IP | IP 固定且可配白名单 |
+| `relay` | 通过中转服务器推送 | 服务器 IP `120.79.2.44` | IP 不固定，无法配白名单 |
+| `hybrid` | 优先直连，失败自动切换中转 | 本机 IP（推荐同时配服务器 IP） | **推荐** — 兼顾速度与稳定性 |
 
 > ⚠️ `config.json` 包含凭证，**不要提交到 GitHub**！已在 `.gitignore` 中忽略。 / `config.json` contains credentials — **do NOT commit to GitHub**! Already in `.gitignore`.
 
