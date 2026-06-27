@@ -16,6 +16,36 @@ from pathlib import Path
 CONFIG_FILE = Path(__file__).parent / "config.json"
 
 
+def _fix_garbled(obj):
+    """
+    修复双重编码乱码（UTF-8 字节被误当作 Latin-1 解码）
+    
+    问题示例：
+    - 原文 "女" → UTF-8 字节 E5 A5 B3
+    - 服务器误当作 Latin-1 解码 → "å¥³"（乱码）
+    - 需要修复：把 "å¥³" 还原回 "女"
+    
+    Args:
+        obj: 任意对象（str, dict, list 等）
+    
+    Returns:
+        修复后的对象
+    """
+    if isinstance(obj, str):
+        try:
+            # 方法：将字符串按 Latin-1 编码回字节，再按 UTF-8 解码
+            return obj.encode('latin-1').decode('utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            # 如果编码失败，说明不是乱码，直接返回
+            return obj
+    elif isinstance(obj, dict):
+        return {k: _fix_garbled(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_fix_garbled(item) for item in obj]
+    else:
+        return obj
+
+
 def load_config():
     """从 config.json 加载配置"""
     default_config = {
@@ -62,7 +92,7 @@ def _post(url: str, payload: dict, api_key: str, timeout: int = 30) -> dict:
                 "body": resp.text,
             }
         resp.raise_for_status()
-        return resp.json()
+        return _fix_garbled(resp.json())
     except requests.exceptions.RequestException as e:
         return {"success": False, "error": f"网络请求失败: {e}"}
     except json.JSONDecodeError:
@@ -78,7 +108,7 @@ def _put(url: str, payload: dict, api_key: str, timeout: int = 30) -> dict:
     try:
         resp = requests.put(url, headers=headers, json=payload, timeout=timeout)
         resp.raise_for_status()
-        return resp.json()
+        return _fix_garbled(resp.json())
     except requests.exceptions.RequestException as e:
         return {"success": False, "error": f"网络请求失败: {e}"}
     except json.JSONDecodeError:
@@ -91,7 +121,7 @@ def _get(url: str, params: dict, api_key: str, timeout: int = 15) -> dict:
     try:
         resp = requests.get(url, headers=headers, params=params, timeout=timeout)
         resp.raise_for_status()
-        return resp.json()
+        return _fix_garbled(resp.json())
     except requests.exceptions.RequestException as e:
         return {"success": False, "error": f"网络请求失败: {e}"}
     except json.JSONDecodeError:
