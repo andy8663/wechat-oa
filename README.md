@@ -128,11 +128,11 @@ cp config.example.json config.json
 
 ### 模式对比
 
-| 模式 | 说明 | 需配 IP 白名单 | 需中转服务器 | 适用场景 |
-|------|------|:-:|:-:|----------|
-| **direct** | 直连微信官方 API | ✅ 本机 IP | ❌ | 服务器 IP 固定且可加入白名单 |
-| **relay** | 通过公网中转服务器推送 | ✅ 服务器 IP | ✅ | 本机 IP 不固定，或无法配白名单 |
-| **hybrid** | 优先 direct，失败自动切换 relay | 自动 | ✅ | **推荐** — 兼顾速度与兼容性 |
+| 模式 | 说明 | 需配 IP 白名单 | 适用场景 |
+|------|------|:-:|----------|
+| **direct** | 直连微信官方 API | ✅ 本机 IP | 服务器 IP 固定且可加入白名单 |
+| **relay** | 通过公共中转服务器推送 | ❌ | 本机 IP 不固定，或无法配白名单 |
+| **hybrid** | 优先 direct，失败自动切换 relay | 自动 | **推荐** — 兼顾速度与兼容性 |
 
 ```
 direct 模式:
@@ -168,89 +168,55 @@ hybrid 模式:
 ```json
 {
   "PUSH_MODE": "relay",
-  "WECHAT_OA_SERVER": "http://your-server-ip",
-  "WECHAT_OA_SERVER_KEY": "your-api-key"
+  "WECHAT_OA_SERVER": "http://120.79.2.44",
+  "WECHAT_OA_SERVER_KEY": "联系作者获取"
 }
 ```
 
-- 需要一台公网服务器部署中转服务
-- 需要将 **中转服务器 IP** 加入微信公众号白名单
-- 本机无需配白名单，适合 IP 不固定的开发环境
+- 无需配置本机 IP 白名单
+- 通过公共中转服务器（http://120.79.2.44）转发请求
+- 适合 IP 不固定的开发环境
 
 #### hybrid（混合模式 — 推荐）
 
 ```json
 {
   "PUSH_MODE": "hybrid",
-  "WECHAT_OA_SERVER": "http://your-server-ip",
-  "WECHAT_OA_SERVER_KEY": "your-api-key"
+  "WECHAT_OA_SERVER": "http://120.79.2.44",
+  "WECHAT_OA_SERVER_KEY": "联系作者获取"
 }
 ```
 
 - 先尝试直连，失败自动切换中转
-- 需要中转服务器（同 relay 配置）
 - 最佳兼容性：有白名单时走直连（快），没有时走中转（稳）
 
 ---
 
-## 中转服务器部署 Relay Server Setup
+## 获取中转服务器密钥 Get Relay Server Key
 
-如果你使用 `relay` 或 `hybrid` 模式，需要部署一台中转服务器。
+使用 `relay` 或 `hybrid` 模式需要配置 `WECHAT_OA_SERVER_KEY`。
 
-### 什么是中转服务器？
+请联系作者获取密钥：
+- GitHub Issues：[https://github.com/andy8663/wechat-oa](https://github.com/andy8663/wechat-oa)
+- 邮箱：`andy8663@163.com`
+- 微信公众号：技术定义未来
 
-中转服务器是一台公网可访问的服务器，它代替你的本机调用微信官方 API。因为微信要求调用方 IP 必须在白名单中，当你本机 IP 不固定时（如家庭网络、移动网络），可以通过固定 IP 的中转服务器转发请求。
+获取密钥后，在 `config.json` 中配置：
 
-### 部署步骤
+```json
+{
+  "PUSH_MODE": "hybrid",
+  "WECHAT_OA_SERVER": "http://120.79.2.44",
+  "WECHAT_OA_SERVER_KEY": "你获取的密钥"
+}
+```
 
-1. **准备一台公网服务器**（如阿里云 ECS、腾讯云 CVM）
+验证连通性：
 
-2. **在服务器上部署中转服务**：
-   ```bash
-   # 克隆代码到服务器
-   git clone https://github.com/andy8663/wechat-oa.git
-   cd wechat-oa
-
-   # 安装依赖
-   pip install fastapi uvicorn requests
-
-   # 启动服务（默认端口 8000）
-   python quaiwei_server.py --port 8000
-   ```
-
-3. **配置服务器防火墙**：开放 8000 端口（或你选择的端口）
-
-4. **将服务器 IP 加入微信白名单**：
-   ```bash
-   # 在服务器上执行，获取公网 IP
-   curl ifconfig.me
-   # 然后到微信公众平台 → 设置与开发 → 安全中心 → IP 白名单 → 添加
-   ```
-
-5. **生成分配 API Key**：
-   中转服务器通过 `X-API-Key` 请求头进行身份验证。你可以自定义一个密钥字符串作为 Key，在服务器端和客户端 `config.json` 中使用相同的值。
-
-6. **在本地 `config.json` 中配置**：
-   ```json
-   {
-     "PUSH_MODE": "hybrid",
-     "WECHAT_OA_SERVER": "http://你的服务器IP:8000",
-     "WECHAT_OA_SERVER_KEY": "你设置的API Key"
-   }
-   ```
-
-7. **验证连通性**：
-   ```bash
-   python relay_client.py info
-   # 返回服务信息说明配置成功
-   ```
-
-### 安全建议
-
-- 不要将中转服务器暴露在公网而不设 API Key
-- 建议使用 HTTPS（配置反向代理 + SSL 证书）
-- API Key 使用足够长的随机字符串
-- 定期检查服务器日志，监控异常调用
+```bash
+python relay_client.py info
+# 返回服务信息说明配置成功
+```
 
 ---
 
