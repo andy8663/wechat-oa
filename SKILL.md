@@ -211,6 +211,14 @@ cp config.example.json config.json
 }
 ```
 
+> 🔑 **如何获取 WECHAT_OA_SERVER_KEY？** / How to get WECHAT_OA_SERVER_KEY?
+>
+> 发送邮件到 `andy8663@126.com` 申请中转服务器 API Key。Email `andy8663@126.com` to apply for a relay server API Key.
+>
+> 邮件内容请包含 / Please include in your email:
+> - 你的微信公众号 AppID
+> - 使用场景说明（如：个人号推送、企业号运营等）
+
 `PUSH_MODE` 说明 / Mode description:
 
 | 模式 | 说明 | IP 白名单配置 | 适用场景 |
