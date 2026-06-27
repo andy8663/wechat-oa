@@ -230,7 +230,12 @@ def generate_cover(title: str, output_path: str) -> str:
     dir_path = os.path.dirname(output_path)
     if dir_path:
         os.makedirs(dir_path, exist_ok=True)
-    img.save(output_path, 'PNG')
+    # 根据文件后缀选择格式，避免 .jpg 后缀存 PNG 内容导致微信 41005 错误
+    ext = os.path.splitext(output_path)[1].lower()
+    if ext in ('.jpg', '.jpeg'):
+        img.save(output_path, 'JPEG', quality=90)
+    else:
+        img.save(output_path, 'PNG')
     return output_path
 
 
