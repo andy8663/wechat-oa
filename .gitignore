@@ -5,3 +5,7 @@ __pycache__/
 *.pyo
 TMP/
 .DS_Store
+
+# Test files and directories
+test/
+*.html
