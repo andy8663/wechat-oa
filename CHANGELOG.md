@@ -7,9 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-06-27
+
+### Added
+- **HTTP 402 AI 付协议支持**：客户端支持标准 HTTP 402 AI 付协议（push_article → alipay-bot → finish_push）
+- **Hybrid 混合模式**：direct 优先，IP 白名单失败自动切换 relay
+- **Relay/Hybrid 模式支持**：为 7 个功能添加 relay/hybrid 模式支持
+- **relay_client 增强**：添加 `_put` 函数，支持 PUT 方法
+
+### Changed
+- **统一命名风格**：`RELAY_SERVER` → `WECHAT_OA_SERVER` 统一命名
+- **update_draft 改用 PUT 方法**：符合微信 API 规范
+- **list_materials 移除 keyword 参数**：简化接口
+
+### Fixed
+- **digest 长度修复**：64 bytes 限制处理
+- **draft_find 返回格式统一**：标准化返回数据结构
+
+## [1.4.0] - 2026-04-15
+
 ### Added
 - **正文配图自动生成**：`generate_infographic.py` 支持生成流程图、对比图、时间线、文字卡片、统计图
+- **relay push 模式**：支持通过 relay 服务器推送文章
 - 新增 `infographic` 命令到 SKILL.md
+
+### Changed
+- **自动去除外层容器卡片样式**：避免正文被大方框包围
 
 ### Fixed
 - **图片URL替换Bug**：HTML源码中的双反斜杠路径（如 `C:\\Users\\...`）无法被替换为微信CDN地址，导致配图显示打叉。修复：上传前预处理，统一规范化所有路径格式
