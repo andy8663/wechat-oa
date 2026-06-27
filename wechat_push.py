@@ -1039,6 +1039,9 @@ def build_article(title, content, thumb_media_id, style_content="", author=None)
     if len(digest) > 120:
         digest = digest[:120]
 
+    # 微信 API 硬性限制：author 不超过 16 字（中文 1 字 = 1，英文/数字/半角标点/空格 2 个 = 1 字）
+    author = _truncate_author(author)
+
     return {
         "title": title,
         "author": author,
@@ -1047,6 +1050,47 @@ def build_article(title, content, thumb_media_id, style_content="", author=None)
         "digest": digest,
         "thumb_media_id": thumb_media_id,
     }
+
+
+def _truncate_author(author, max_units=16):
+    """
+    截断 author 字段以满足微信公众号 API 限制。
+
+    微信官方规则（与 title、digest 完全同一套计算逻辑）：
+      - 中文字符（汉字、中文标点、Emoji、全角符号）= 1 字
+      - 英文/数字/半角标点/空格 = 0.5 字（2 个折算 1 字）
+      - 总校验公式：中文字符数 + (英文字符数 ÷ 2) ≤ 16
+    """
+    if not author:
+        return ""
+
+    result = []
+    used = 0.0
+
+    for ch in author:
+        code = ord(ch)
+        if (
+            0x4E00 <= code <= 0x9FFF
+            or 0x3400 <= code <= 0x4DBF
+            or 0x20000 <= code <= 0x2A6DF
+            or 0x2A700 <= code <= 0x2B73F
+            or 0x2B740 <= code <= 0x2B81F
+            or 0x2B820 <= code <= 0x2CEAF
+            or 0xF900 <= code <= 0xFAFF
+            or 0xFF00 <= code <= 0xFFEF
+            or 0x3000 <= code <= 0x303F
+            or 0x1F300 <= code <= 0x1FAFF
+        ):
+            cost = 1.0
+        else:
+            cost = 0.5
+
+        if used + cost > max_units + 1e-9:
+            break
+        result.append(ch)
+        used += cost
+
+    return "".join(result)
 
 
 def save_draft_record(title, media_id):
