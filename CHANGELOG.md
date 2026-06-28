@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-06-28
+
+### Fixed
+- **digest 长度修正**：120 → 128 字（与微信官方文档一致），按"字"混合计数（中文=1字，英文=0.5字）
+- **author 长度修正**：新增 16 字上限截断（中文=1字，英文=0.5字混合计数）
+- **title 长度修正**：新增 32 字上限截断（中文=1字，英文=0.5字混合计数）
+- **封图生成失败不再静默跳过**：直接报错并提示解决方法，修复字体路径跨平台支持（Windows/macOS/Linux）
+- **服务端 create_draft 增加 thumb_b64 空值校验**：清晰报错而非微信 API 神秘错误码
+
 ## [1.5.0] - 2026-06-27
 
 ### Added
