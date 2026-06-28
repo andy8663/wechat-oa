@@ -1046,7 +1046,7 @@ def _fix_wechat_padding(content):
     return content
 
 
-def build_article(title, content, thumb_media_id, style_content="", author=None):
+def build_article(title, content, thumb_media_id, style_content="", author=None, digest=None):
     """构建图文消息数据"""
     if author is None:
         author = CONFIG.get("author", "Woody")
@@ -1077,12 +1077,11 @@ def build_article(title, content, thumb_media_id, style_content="", author=None)
     content = re.sub(r'>\s*\n', '>', content)  # 行尾标签后的换行
     content = re.sub(r'[ \t]{2,}', ' ', content)  # 多个空格合并
 
-    # 摘要：智能提取
-    digest = _extract_digest(content)
-
-    # 微信 API 硬性限制：digest 不超过 120 字
-    # （中文/中文标点/Emoji = 1 字，英文/数字/半角标点/空格 = 0.5 字）
-    digest = _truncate_digest(digest)
+    # 摘要：优先用传入的 AI 生成摘要，未传入才自动提取
+    if not digest:
+        digest = _extract_digest(content)
+    # 不再截断 digest，让微信官方 API 检查长度
+    # digest = _truncate_digest(digest)
 
     # 微信 API 硬性限制：author 不超过 30 字（中文 1 字 = 1，英文/数字/半角标点/空格 2 个 = 1 字）
     author = _truncate_author(author)
@@ -1270,7 +1269,7 @@ def _draft_create_relay(html_path, cfg):
         title=title,
         content=content,
         author=cfg.get("author", "Woody"),
-        digest="",
+        digest=None,  # 未传入时由服务端 fallback 提取
         thumb_path=thumb_path,
     )
     if result.get("success"):

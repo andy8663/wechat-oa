@@ -38,7 +38,7 @@ WeChat Official Account draft management toolkit. Built on official WeChat APIs,
 - **行内样式转换** / Inline-style conversion：自动将 HTML 中的 `<style>` 标签转换为行内 `style=""` 属性，兼容微信文章渲染（已固化到 skill） / Auto-converts `<style>` tags into inline `style=""` attributes for WeChat-compatible rendering (baked into this skill)
 - **自动封面生成** / Auto cover generation：根据文章标题 AI 生成科技风封面图（2.35:1 比例） / AI-generated tech-style cover image from article title (2.35:1 ratio)
 - **正文图片自动上传** / Auto inline image upload：自动提取 HTML/MD 中的本地图片，上传到微信素材库并替换 URL / Automatically extracts local images from HTML/MD, uploads to WeChat material library and replaces URLs
-- **智能摘要** / Smart digest：自动从正文中选取含功能关键词的段落作为摘要，而非机械截取前80字 / Intelligently selects keyword-rich paragraphs as digest instead of blindly truncating at 80 chars
+- **智能摘要** / Smart digest：AI 推送文章时生成 1-2 句精准摘要传入 `digest` 参数；未传入时服务端自动从第一段正文提取 / AI generates a 1-2 sentence digest when pushing; falls back to auto-extracting from the first paragraph if not provided
 
 ## ⚠️ 排版规范（必读） / Layout Specification (MUST READ)
 
@@ -141,6 +141,41 @@ python relay_client.py info
 # 查看草稿列表
 python relay_client.py list
 ```
+
+### 摘要（digest）生成规范
+
+**推送或更新文章时，AI 必须生成摘要并传入 `digest` 参数，不要留空让服务端自动提取。**
+
+When pushing or updating articles, AI MUST generate a digest and pass it via the `digest` parameter — do not leave it empty for the server to auto-extract.
+
+**摘要要求 / Digest requirements:**
+
+| 维度 | 规范 |
+|------|------|
+| 长度 | 1-2 句话，不超过 120 字（微信限制 128 字，留余量） |
+| 内容 | 概括文章核心观点或亮点，不是机械截取正文前几句 |
+| 风格 | 简洁有吸引力，让读者在公众号消息列表中有点击欲望 |
+| 语言 | 与文章正文语言一致 |
+
+**示例 / Examples:**
+
+```python
+# relay 模式 — push_article
+from relay_client import push_article
+
+result = push_article(
+    title="西联汇款全球扩张策略分析",
+    content=html_content,
+    author="Woody",
+    digest="西联汇款通过数字化转型和移动端布局，在跨境汇款市场实现逆势增长，覆盖200+国家和地区。",  # ← AI 生成
+)
+
+# direct 模式 — wechat_push.py
+# python wechat_push.py create article.html --digest "AI 生成的摘要"
+```
+
+> 服务端 fallback 逻辑：仅当 `digest` 为空时，才从正文第一段 `<p>` 标签提取文本作为摘要。质量不如 AI 生成。
+
 
 ## 初始化配置 / Initial Setup
 

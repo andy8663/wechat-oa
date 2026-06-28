@@ -302,7 +302,7 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
         title: 文章标题
         content: 文章正文 HTML
         author: 作者
-        digest: 摘要
+        digest: 摘要（建议 AI 生成 1-2 句概括；留空则服务端自动提取第一段正文）
         thumb_path: 封面图本地路径（可选，会 base64 编码后发送）
         api_key: WECHAT_OA_SERVER_KEY
         relay_server: 中转服务器地址（如 http://120.79.2.44）
@@ -326,7 +326,7 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
         "title": title,
         "content": content,
         "author": author or cfg.get("author", "Woody"),
-        "digest": digest,
+        "digest": digest or "",  # 空字符串让服务端 fallback 提取
     }
 
     # 封面图：读取并 base64 编码
