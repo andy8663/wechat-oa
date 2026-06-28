@@ -9,6 +9,7 @@ wechat-oa relay client
 import sys
 import os
 import json
+import re
 import base64
 import requests
 from pathlib import Path
@@ -32,12 +33,17 @@ def _fix_garbled(obj):
         修复后的对象
     """
     if isinstance(obj, str):
+        result = obj
+        # Step 1: 修复 Latin-1 双重编码乱码
+        # 原文 "女" → UTF-8 字节 E5 A5 B3 → 误当作 Latin-1 解码 → "å¥³"
         try:
-            # 方法：将字符串按 Latin-1 编码回字节，再按 UTF-8 解码
-            return obj.encode('latin-1').decode('utf-8')
+            result = result.encode('latin-1').decode('utf-8')
         except (UnicodeEncodeError, UnicodeDecodeError):
-            # 如果编码失败，说明不是乱码，直接返回
-            return obj
+            pass
+        # Step 2: 修复 \\uXXXX 双转义 Unicode（JSON 序列化时反斜杠被再次转义）
+        # 服务端返回 \u5b69（字面反斜杠+u），需要还原为实际字符
+        result = re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1), 16)), result)
+        return result
     elif isinstance(obj, dict):
         return {k: _fix_garbled(v) for k, v in obj.items()}
     elif isinstance(obj, list):
