@@ -83,7 +83,7 @@ def _post(url: str, payload: dict, api_key: str, timeout: int = 30) -> dict:
         "X-API-Key": api_key,
     }
     try:
-        resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        resp = requests.post(url, headers=headers, data=json.dumps(payload, ensure_ascii=False).encode('utf-8'), timeout=timeout)
         # 捕获标准 HTTP 402（AI 付协议）
         if resp.status_code == 402:
             return {
@@ -106,7 +106,7 @@ def _put(url: str, payload: dict, api_key: str, timeout: int = 30) -> dict:
         "X-API-Key": api_key,
     }
     try:
-        resp = requests.put(url, headers=headers, json=payload, timeout=timeout)
+        resp = requests.put(url, headers=headers, data=json.dumps(payload, ensure_ascii=False).encode('utf-8'), timeout=timeout)
         resp.raise_for_status()
         return _fix_garbled(resp.json())
     except requests.exceptions.RequestException as e:
