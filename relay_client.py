@@ -52,6 +52,43 @@ def _fix_garbled(obj):
         return obj
 
 
+def _truncate_digest(digest: str, max_units: int = 120) -> str:
+    """
+    截断 digest 以满足微信公众号 API 限制。
+
+    微信规则：
+      - 中文字符（汉字、中文标点、Emoji、全角符号）= 1 单位
+      - 英文/数字/半角标点/空格 = 0.5 单位
+      - 总校验公式：中文字符数 + (英文字符数 ÷ 2) ≤ 120
+    """
+    if not digest:
+        return ""
+    result = []
+    used = 0.0
+    for ch in digest:
+        code = ord(ch)
+        if (
+            0x4E00 <= code <= 0x9FFF
+            or 0x3400 <= code <= 0x4DBF
+            or 0x20000 <= code <= 0x2A6DF
+            or 0x2A700 <= code <= 0x2B73F
+            or 0x2B740 <= code <= 0x2B81F
+            or 0x2B820 <= code <= 0x2CEAF
+            or 0xF900 <= code <= 0xFAFF
+            or 0xFF00 <= code <= 0xFFEF
+            or 0x3000 <= code <= 0x303F
+            or 0x1F300 <= code <= 0x1FAFF
+        ):
+            cost = 1.0
+        else:
+            cost = 0.5
+        if used + cost > max_units + 1e-9:
+            break
+        result.append(ch)
+        used += cost
+    return "".join(result)
+
+
 def load_config():
     """从 config.json 加载配置"""
     default_config = {
@@ -189,6 +226,8 @@ def create_push_order(title: str = "", content: str = "", author: str = "", dige
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
+    digest = _truncate_digest(digest)
+
     # 构建请求体（包含服务端必填字段）
     payload = {
         "appid": cfg.get("APP_ID", ""),
@@ -246,6 +285,8 @@ def execute_push_article(title: str, content: str, order_id: str,
     api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    digest = _truncate_digest(digest)
 
     # 构建请求体
     payload = {
@@ -324,6 +365,8 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
     api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    digest = _truncate_digest(digest)
 
     # 构建请求体
     payload = {
@@ -527,6 +570,8 @@ def update_draft(media_id: str, title: str, content: str, author: str = "", dige
     api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    digest = _truncate_digest(digest)
 
     # 构建请求体
     payload = {

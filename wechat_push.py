@@ -1080,8 +1080,7 @@ def build_article(title, content, thumb_media_id, style_content="", author=None,
     # 摘要：优先用传入的 AI 生成摘要，未传入才自动提取
     if not digest:
         digest = _extract_digest(content)
-    # 不再截断 digest，让微信官方 API 检查长度
-    # digest = _truncate_digest(digest)
+    digest = _truncate_digest(digest)
 
     # 微信 API 硬性限制：author 不超过 30 字（中文 1 字 = 1，英文/数字/半角标点/空格 2 个 = 1 字）
     author = _truncate_author(author)
