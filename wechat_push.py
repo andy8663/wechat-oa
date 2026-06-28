@@ -905,7 +905,7 @@ def _parse_css_rules(css_text, css_map):
 
 
 
-def _extract_digest(content, max_len=128):
+def _extract_digest(content, max_len=120):
     """
     Smart digest extraction from HTML content.
     Strategy:
@@ -1080,12 +1080,11 @@ def build_article(title, content, thumb_media_id, style_content="", author=None)
     # 摘要：智能提取
     digest = _extract_digest(content)
 
-    # 微信 API 硬性限制：digest 不超过 128 个字
+    # 微信 API 硬性限制：digest 不超过 120 字
     # （中文/中文标点/Emoji = 1 字，英文/数字/半角标点/空格 = 0.5 字）
-    if len(digest) > 128:
-        digest = digest[:128]
+    digest = _truncate_digest(digest)
 
-    # 微信 API 硬性限制：author 不超过 16 字（中文 1 字 = 1，英文/数字/半角标点/空格 2 个 = 1 字）
+    # 微信 API 硬性限制：author 不超过 30 字（中文 1 字 = 1，英文/数字/半角标点/空格 2 个 = 1 字）
     author = _truncate_author(author)
 
     return {
@@ -1098,16 +1097,14 @@ def build_article(title, content, thumb_media_id, style_content="", author=None)
     }
 
 
-def _truncate_title(title, max_units=32):
+def _truncate_title(title, max_units=64):
     """
     截断 title 字段以满足微信公众号 API 限制。
 
-    微信官方规则（与 author、digest 完全同一套计算逻辑）：
+    微信官方规则：
       - 中文字符（汉字、中文标点、Emoji、全角符号）= 1 字
       - 英文/数字/半角标点/空格 = 0.5 字（2 个折算 1 字）
-      - 总校验公式：中文字符数 + (英文字符数 ÷ 2) ≤ 32
-
-    参考：微信官方文档 draft/add 接口，title 字段"总长度不超过 32 个字"。
+      - 总校验公式：中文字符数 + (英文字符数 ÷ 2) ≤ 64
     """
     if not title:
         return ""
@@ -1141,33 +1138,89 @@ def _truncate_title(title, max_units=32):
     return "".join(result)
 
 
-def _truncate_author(author, max_bytes=16):
+def _truncate_author(author, max_units=30):
     """
     截断 author 字段以满足微信公众号 API 限制。
 
-    微信官方文档：author 不超过 16 个字。
-    实际测试发现：微信是按 UTF-8 字节数校验的（可能不是按字符数）。
-
-    策略：
-    - 按 UTF-8 编码计算字节数
-    - 截断到 max_bytes 字节以内
-    - 避免截断到多字节字符的中间
-
-    参数：
-    - max_bytes: 最大字节数（默认 16，根据测试结果调整）
+    微信官方规则：
+      - 中文字符（汉字、中文标点、Emoji、全角符号）= 1 字
+      - 英文/数字/半角标点/空格 = 0.5 字（2 个折算 1 字）
+      - 总校验公式：中文字符数 + (英文字符数 ÷ 2) ≤ 30
     """
     if not author:
         return ""
 
-    # 先按字符截断，然后检查字节数
-    result = ""
-    for ch in author:
-        test = result + ch
-        if len(test.encode('utf-8')) > max_bytes:
-            break
-        result = test
+    result = []
+    used = 0.0
 
-    return result
+    for ch in author:
+        code = ord(ch)
+        # 中文类字符 = 1 字
+        if (
+            0x4E00 <= code <= 0x9FFF       # 汉字
+            or 0x3400 <= code <= 0x4DBF    # 扩展A
+            or 0x20000 <= code <= 0x2A6DF  # 扩展B
+            or 0x2A700 <= code <= 0x2B73F  # 扩展C
+            or 0x2B740 <= code <= 0x2B81F  # 扩展D
+            or 0x2B820 <= code <= 0x2CEAF  # 扩展E
+            or 0xF900 <= code <= 0xFAFF    # 兼容汉字
+            or 0xFF00 <= code <= 0xFFEF    # 全角符号
+            or 0x3000 <= code <= 0x303F    # CJK标点
+            or 0x1F300 <= code <= 0x1FAFF  # Emoji
+            or 0xFE50 <= code <= 0xFE6F    # 中文标点变体
+        ):
+            cost = 1.0
+        else:
+            # 英文/数字/半角标点/空格 = 0.5 字
+            cost = 0.5
+
+        if used + cost > max_units + 1e-9:
+            break
+        result.append(ch)
+        used += cost
+
+    return "".join(result)
+
+
+def _truncate_digest(digest, max_units=120):
+    """
+    截断 digest 字段以满足微信公众号 API 限制。
+
+    微信官方规则：
+      - 中文字符（汉字、中文标点、Emoji、全角符号）= 1 字
+      - 英文/数字/半角标点/空格 = 0.5 字（2 个折算 1 字）
+      - 总校验公式：中文字符数 + (英文字符数 ÷ 2) ≤ 120
+    """
+    if not digest:
+        return ""
+
+    result = []
+    used = 0.0
+
+    for ch in digest:
+        code = ord(ch)
+        if (
+            0x4E00 <= code <= 0x9FFF
+            or 0x3400 <= code <= 0x4DBF
+            or 0x20000 <= code <= 0x2A6DF
+            or 0x2A700 <= code <= 0x2B73F
+            or 0x2B740 <= code <= 0x2B81F
+            or 0x2B820 <= code <= 0x2CEAF
+            or 0xF900 <= code <= 0xFAFF
+            or 0xFF00 <= code <= 0xFFEF
+            or 0x3000 <= code <= 0x303F
+            or 0x1F300 <= code <= 0x1FAFF
+        ):
+            cost = 1.0
+        else:
+            cost = 0.5
+
+        if used + cost > max_units + 1e-9:
+            break
+        result.append(ch)
+        used += cost
+
+    return "".join(result)
 
 
 def save_draft_record(title, media_id):
