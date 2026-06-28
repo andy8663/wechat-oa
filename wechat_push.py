@@ -1141,45 +1141,33 @@ def _truncate_title(title, max_units=32):
     return "".join(result)
 
 
-def _truncate_author(author, max_units=16):
+def _truncate_author(author, max_bytes=16):
     """
     截断 author 字段以满足微信公众号 API 限制。
 
-    微信官方规则（与 title、digest 完全同一套计算逻辑）：
-      - 中文字符（汉字、中文标点、Emoji、全角符号）= 1 字
-      - 英文/数字/半角标点/空格 = 0.5 字（2 个折算 1 字）
-      - 总校验公式：中文字符数 + (英文字符数 ÷ 2) ≤ 16
+    微信官方文档：author 不超过 16 个字。
+    实际测试发现：微信是按 UTF-8 字节数校验的（可能不是按字符数）。
+
+    策略：
+    - 按 UTF-8 编码计算字节数
+    - 截断到 max_bytes 字节以内
+    - 避免截断到多字节字符的中间
+
+    参数：
+    - max_bytes: 最大字节数（默认 16，根据测试结果调整）
     """
     if not author:
         return ""
 
-    result = []
-    used = 0.0
-
+    # 先按字符截断，然后检查字节数
+    result = ""
     for ch in author:
-        code = ord(ch)
-        if (
-            0x4E00 <= code <= 0x9FFF
-            or 0x3400 <= code <= 0x4DBF
-            or 0x20000 <= code <= 0x2A6DF
-            or 0x2A700 <= code <= 0x2B73F
-            or 0x2B740 <= code <= 0x2B81F
-            or 0x2B820 <= code <= 0x2CEAF
-            or 0xF900 <= code <= 0xFAFF
-            or 0xFF00 <= code <= 0xFFEF
-            or 0x3000 <= code <= 0x303F
-            or 0x1F300 <= code <= 0x1FAFF
-        ):
-            cost = 1.0
-        else:
-            cost = 0.5
-
-        if used + cost > max_units + 1e-9:
+        test = result + ch
+        if len(test.encode('utf-8')) > max_bytes:
             break
-        result.append(ch)
-        used += cost
+        result = test
 
-    return "".join(result)
+    return result
 
 
 def save_draft_record(title, media_id):
