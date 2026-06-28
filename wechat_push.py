@@ -453,10 +453,9 @@ def parse_html_article(html_path):
                 title = candidate
                 break
 
-    # 微信公众号标题限制：最多64个字符（实测上限，65字符会报 title size out of limit）
-    # 原文：最多64字节（约32个中文字符）--错误，微信按字符计，非字节
-    if len(title) > 64:
-        title = title[:64]
+    # 微信公众号标题限制：最多 32 个字（微信官方文档）
+    # 计算规则：中文/中文标点/Emoji = 1字，英文/数字/半角标点/空格 = 0.5字
+    title = _truncate_title(title)
 
     # 提取 <style> 标签内容（用于 CSS 内联转换）
     style_blocks = re.findall(r'<style[^>]*>(.*?)</style>', content, re.IGNORECASE | re.DOTALL)
@@ -906,7 +905,7 @@ def _parse_css_rules(css_text, css_map):
 
 
 
-def _extract_digest(content, max_len=120):
+def _extract_digest(content, max_len=128):
     """
     Smart digest extraction from HTML content.
     Strategy:
@@ -1077,9 +1076,10 @@ def build_article(title, content, thumb_media_id, style_content="", author=None)
     # 摘要：智能提取
     digest = _extract_digest(content)
 
-    # 微信 API 硬性限制：digest 不超过 120 字符（中文/英文/数字均计 1 字符）
-    if len(digest) > 120:
-        digest = digest[:120]
+    # 微信 API 硬性限制：digest 不超过 128 个字
+    # （中文/中文标点/Emoji = 1 字，英文/数字/半角标点/空格 = 0.5 字）
+    if len(digest) > 128:
+        digest = digest[:128]
 
     # 微信 API 硬性限制：author 不超过 16 字（中文 1 字 = 1，英文/数字/半角标点/空格 2 个 = 1 字）
     author = _truncate_author(author)
@@ -1092,6 +1092,49 @@ def build_article(title, content, thumb_media_id, style_content="", author=None)
         "digest": digest,
         "thumb_media_id": thumb_media_id,
     }
+
+
+def _truncate_title(title, max_units=32):
+    """
+    截断 title 字段以满足微信公众号 API 限制。
+
+    微信官方规则（与 author、digest 完全同一套计算逻辑）：
+      - 中文字符（汉字、中文标点、Emoji、全角符号）= 1 字
+      - 英文/数字/半角标点/空格 = 0.5 字（2 个折算 1 字）
+      - 总校验公式：中文字符数 + (英文字符数 ÷ 2) ≤ 32
+
+    参考：微信官方文档 draft/add 接口，title 字段"总长度不超过 32 个字"。
+    """
+    if not title:
+        return ""
+
+    result = []
+    used = 0.0
+
+    for ch in title:
+        code = ord(ch)
+        if (
+            0x4E00 <= code <= 0x9FFF
+            or 0x3400 <= code <= 0x4DBF
+            or 0x20000 <= code <= 0x2A6DF
+            or 0x2A700 <= code <= 0x2B73F
+            or 0x2B740 <= code <= 0x2B81F
+            or 0x2B820 <= code <= 0x2CEAF
+            or 0xF900 <= code <= 0xFAFF
+            or 0xFF00 <= code <= 0xFFEF
+            or 0x3000 <= code <= 0x303F
+            or 0x1F300 <= code <= 0x1FAFF
+        ):
+            cost = 1.0
+        else:
+            cost = 0.5
+
+        if used + cost > max_units + 1e-9:
+            break
+        result.append(ch)
+        used += cost
+
+    return "".join(result)
 
 
 def _truncate_author(author, max_units=16):
