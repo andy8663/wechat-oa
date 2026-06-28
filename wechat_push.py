@@ -915,6 +915,10 @@ def _extract_digest(content, max_len=128):
       4. Boost lines with functional keywords
       5. Pick the best scored paragraph and truncate at natural break points
     """
+    # ⚠️ 先移除 <style> 和 <script> 标签及其内容（避免 CSS/JS 代码进入摘要）
+    content = re.sub(r'<style[^>]*>.*?</style>', '', content, flags=re.DOTALL | re.IGNORECASE)
+    content = re.sub(r'<script[^>]*>.*?</script>', '', content, flags=re.DOTALL | re.IGNORECASE)
+    
     # Strip HTML tags
     plain = re.sub(r'<[^>]+>', '', content)
     # Strip HTML entities (e.g. &ldquo; &rdquo; &mdash;)
