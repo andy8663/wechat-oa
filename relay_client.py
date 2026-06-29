@@ -640,17 +640,19 @@ def list_drafts(count: int = 10, offset: int = 0, api_key: str = "", relay_serve
 # ════════════════════════════════════════════════════════════════════════════
 
 def update_draft(media_id: str, title: str, content: str, author: str = "", digest: str = "",
-                    thumb_path: str = None, api_key: str = "", relay_server: str = "") -> dict:
+                    thumb_path: str = None, thumb_media_id: str = "",
+                    api_key: str = "", relay_server: str = "") -> dict:
     """
     更新已有草稿（通过中转服务器）
 
     Args:
         media_id: 草稿 media_id
         title: 文章标题
-        content: 文章正文 HTML
+        content: 文章正文 HTML（应已内联 CSS）
         author: 作者
         digest: 摘要
-        thumb_path: 封面图本地路径（可选，会 base64 编码后发送）
+        thumb_path: 封面图本地路径（有则上传，无则用 thumb_media_id）
+        thumb_media_id: 已有 thumb_media_id（直接使用，不上传新封面）
         api_key: WECHAT_OA_SERVER_KEY
         relay_server: 中转服务器地址
 
@@ -676,7 +678,7 @@ def update_draft(media_id: str, title: str, content: str, author: str = "", dige
         "digest": digest,
     }
 
-    # 封面图：读取并 base64 编码
+    # 封面图：优先用 thumb_path 上传新封面，其次用已有的 thumb_media_id
     if thumb_path and os.path.exists(thumb_path):
         try:
             with open(thumb_path, 'rb') as f:
@@ -684,7 +686,9 @@ def update_draft(media_id: str, title: str, content: str, author: str = "", dige
             payload["thumb_image"] = base64.b64encode(img_data).decode('utf-8')
             payload["thumb_filename"] = os.path.basename(thumb_path)
         except Exception as e:
-            print(f"[WARN] 封面图读取失败，将继续无封面更新: {e}")
+            print(f"[WARN] 封面图读取失败: {e}")
+    elif thumb_media_id:
+        payload["thumb_media_id"] = thumb_media_id
 
     url = f"{relay_server}/api/push/article/{media_id}"
     result = _put(url, payload, api_key, timeout=30)

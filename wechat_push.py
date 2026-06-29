@@ -1403,24 +1403,28 @@ def _draft_list_direct(count=10, offset=0):
 def _draft_update_relay(media_id, html_path, force_cover=False):
     """relay 模式更新草稿"""
     from relay_client import update_draft as _relay_update
-    title, content, style_content = parse_file(html_path)
+    title, body, style_content = parse_file(html_path)
     print(f"[TITLE] {title}")
-    print(f"[LENGTH] {len(content)} chars")
+    print(f"[LENGTH] {len(body)} chars")
     if style_content:
         print(f"[STYLE] 提取到 {len(style_content)} 字符 CSS 样式")
 
-    # 封面图：读取本地封面图（用于 relay 上传）
+    # 重建完整 HTML（含 <style>），确保 relay_push 能提取 CSS
+    if style_content:
+        content = f'<html><head><style>{style_content}</style></head><body>{body}</body></html>'
+    else:
+        content = body
+
+    # 封面图：每次更新都强制生成新封面（微信 update API 必须传 thumb_media_id）
     thumb_path = None
-    if force_cover:
-        try:
-            import tempfile
-            tmp_dir = tempfile.gettempdir()
-            thumb_path = os.path.join(tmp_dir, f"relay_cover_{int(os.path.getmtime(html_path))}.jpg")
-            if not os.path.exists(thumb_path):
-                generate_cover(title, thumb_path)
-                print(f"[COVER] 已生成本地封面图: {thumb_path}")
-        except Exception as e:
-            print(f"[WARN] 封面图生成失败，将继续无封面更新: {e}")
+    try:
+        import tempfile
+        tmp_dir = tempfile.gettempdir()
+        thumb_path = os.path.join(tmp_dir, f"relay_cover_update_{int(os.path.getmtime(html_path))}.jpg")
+        generate_cover(title, thumb_path)
+        print(f"[COVER] 已生成新封面图: {thumb_path}")
+    except Exception as e:
+        print(f"[WARN] 封面图生成失败: {e}")
 
     result = _relay_update(
         media_id=media_id,
