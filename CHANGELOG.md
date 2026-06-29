@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-06-29
+
+### Changed
+- **版本号控制改为手动**：移除 workflow 中的 `--bump` 参数，版本号完全由 SKILL.md 控制
+- **版本号跃升到 2.0.0**：标记 relay 模式核心功能修复完成
+
+### Fixed
+- **relay 模式 CSS 内联丢失**：`_draft_create_relay()` 和 `_draft_update_relay()` 现在正确传递 `<style>` 标签，`relay_client.py` 新增 `_inline_css()` 函数
+- **relay 模式更新草稿失败（40007 invalid media_id）**：每次 update 强制生成新封面，`thumb_media_id` 正确传递
+- **relay_client.py `update_draft` 函数签名**：新增 `thumb_media_id` 参数，支持直接使用已有封面 ID
+
+---
+
 ## [1.5.1] - 2026-06-28
 
 ### Fixed
