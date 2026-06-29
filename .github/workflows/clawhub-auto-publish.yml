@@ -31,7 +31,7 @@ jobs:
           # minor → 中版本 1.0.0 → 1.1.0
           #clawhub sync --root ./ --all --bump minor --changelog "Auto update from GitHub"
           # major → 大版本 1.0.0 → 2.0.0
-          clawhub sync --root ./ --all --bump major --changelog "Bump to 2.0.0"
+          #clawhub sync --root ./ --all --bump major --changelog "Bump to 2.0.0"
           
           # 2. 版本号由 SKILL.md 手动控制，这里不再自动 bump
-          #clawhub sync --root ./ --all --changelog "Auto update from GitHub"
+          clawhub sync --root ./ --all --changelog "Auto update from GitHub"
