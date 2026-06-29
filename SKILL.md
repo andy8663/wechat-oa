@@ -1,5 +1,5 @@
 ---
-slug: wechat-oa-woody
+slug: wechat-oa
 displayName: 微信公众号草稿箱管理工具
 summary: 微信公众号草稿箱管理工具集，支持创建/更新/删除草稿、上传素材、生成封面图，基于官方API，无需第三方依赖。
 license: MIT
