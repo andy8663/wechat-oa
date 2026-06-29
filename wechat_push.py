@@ -1239,11 +1239,18 @@ def _is_ip_whitelist_error(e):
 def _draft_create_relay(html_path, cfg):
     """relay 模式创建草稿"""
     from relay_client import push_article as _relay_push
-    title, content, style_content = parse_file(html_path)
+    title, body, style_content = parse_file(html_path)
     print(f"[TITLE] {title}")
-    print(f"[LENGTH] {len(content)} chars")
+    print(f"[LENGTH] {len(body)} chars")
     if style_content:
         print(f"[STYLE] 提取到 {len(style_content)} 字符 CSS 样式")
+
+    # 重建完整 HTML（含 <style>），以便 relay_push 里的 _inline_css() 能提取 CSS
+    # parse_file 删掉了 <style>，所以这里要补回去
+    if style_content:
+        content = f'<html><head><style>{style_content}</style></head><body>{body}</body></html>'
+    else:
+        content = body
 
     # 生成本地封面图（用于 relay 上传）
     # 封图生成失败时直接报错，不继续（微信 API 强制要求封面图）

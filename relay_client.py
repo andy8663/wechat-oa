@@ -336,6 +336,92 @@ def _extract_trade_no(output: str) -> str:
     return ""
 
 
+def _inline_css(html):
+    """
+    简单的 CSS 内联转换（无外部依赖）。
+    从 HTML 的 <style> 标签提取 CSS 规则，将样式内联到对应元素的 style 属性中。
+    支持：标签选择器、class 选择器、tag.class 组合。
+    """
+    css_map = {}
+
+    def parse_rules(css_text):
+        for block in css_text.split('}'):
+            block = block.strip()
+            if not block or '{' not in block:
+                continue
+            selector, _, props = block.partition('{')
+            selector = selector.strip()
+            props = props.strip().rstrip(';')
+            if not selector or not props:
+                continue
+            # 跳过伪类、属性选择器、ID 选择器
+            first = selector.split()[0]
+            if ':' in first or '[' in first or '#' in selector:
+                continue
+            css_map[selector] = props
+
+    html = re.sub(
+        r'<style[^>]*>(.*?)</style>',
+        lambda m: (parse_rules(m.group(1)), '')[1],
+        html,
+        flags=re.DOTALL
+    )
+
+    if not css_map:
+        return html
+
+    def tag_replacer(m):
+        raw = m.group(0)
+        if raw.startswith('</'):
+            return raw
+        tag_m = re.match(r'</?([a-zA-Z][a-zA-Z0-9-]*)', raw)
+        if not tag_m:
+            return raw
+        tag = tag_m.group(1).lower()
+        after = raw[tag_m.end():]
+        # 找到第一个不在引号内的 >
+        i, in_quote, quote_char = 0, False, None
+        while i < len(after):
+            c = after[i]
+            if not in_quote and c in ('"', "'"):
+                in_quote, quote_char = True, c
+            elif in_quote and c == quote_char:
+                in_quote, quote_char = False, None
+            elif not in_quote and c == '>':
+                break
+            i += 1
+        attrs_str = after[:i]
+        trailing_slash = ''
+        if attrs_str.rstrip().endswith('/'):
+            trailing_slash = '/'
+            attrs_str = attrs_str.rstrip()[:-1]
+
+        cls_match = re.search(r'class=["\']([^"\']+)["\']', attrs_str)
+        cls = cls_match.group(1).split()[0] if cls_match else ""
+
+        applied = []
+        key = f"{tag}.{cls}" if cls else None
+        if key and key in css_map:
+            applied.append(css_map[key])
+        if cls and f".{cls}" in css_map:
+            applied.append(css_map[f".{cls}"])
+        if tag in css_map:
+            applied.append(css_map[tag])
+
+        existing = re.search(r'style=["\']([^"\']*)["\']', attrs_str)
+        if existing:
+            applied.insert(0, existing.group(1))
+
+        new_style = "; ".join(applied).rstrip("; ")
+        if new_style:
+            attrs_str = re.sub(r'\s*style=["\'][^"\']*["\']', '', attrs_str)
+            attrs_str = attrs_str + f' style="{new_style}"'
+
+        return f"<{tag}{attrs_str}{trailing_slash}>"
+
+    return re.sub(r'</?[a-zA-Z][a-zA-Z0-9-]*(?:\s+[^>]*)?/?>', tag_replacer, html)
+
+
 def push_article(title: str, content: str, author: str = "", digest: str = "",
                  thumb_path: str = None, api_key: str = "", relay_server: str = "") -> dict:
     """
@@ -367,6 +453,10 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
     digest = _truncate_digest(digest)
+
+    # CSS 内联：把 <style> 标签的样式内联到元素的 style 属性中
+    # 这样微信 API 过滤掉 <style> 标签后，内联样式仍然生效
+    content = _inline_css(content)
 
     # 构建请求体
     payload = {
@@ -572,6 +662,9 @@ def update_draft(media_id: str, title: str, content: str, author: str = "", dige
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
     digest = _truncate_digest(digest)
+
+    # CSS 内联：把 <style> 标签的样式内联到元素的 style 属性中
+    content = _inline_css(content)
 
     # 构建请求体
     payload = {
