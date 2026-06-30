@@ -1580,14 +1580,17 @@ def _material_delete_relay(media_id):
 # ========== 草稿操作 ==========
 
 
-def draft_create(html_path, force_cover=False):
+def draft_create(html_path, force_cover=False, env_override=None):
     """创建新草稿
 
     Args:
         html_path: HTML 文件路径
         force_cover: 是否强制重新生成封面，默认 False（新建草稿无旧封面可复用）
+        env_override: 可选，覆盖 ENV 配置（dev/prod）
     """
     cfg = load_config()
+    if env_override:
+        cfg["ENV"] = env_override
     push_mode = cfg.get("PUSH_MODE", "direct")
 
     # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
@@ -1623,7 +1626,7 @@ def _get_draft_thumb_media_id(access_token, media_id):
     return ""
 
 
-def draft_update(media_id, html_path, force_cover=False):
+def draft_update(media_id, html_path, force_cover=False, env_override=None):
     """
     更新已有草稿
 
@@ -1631,8 +1634,11 @@ def draft_update(media_id, html_path, force_cover=False):
         media_id: 草稿 media_id
         html_path: HTML 文件路径
         force_cover: 是否强制重新生成封面，默认 False（复用已有封面）
+        env_override: 可选，覆盖 ENV 配置（dev/prod）
     """
     cfg = load_config()
+    if env_override:
+        cfg["ENV"] = env_override
     push_mode = cfg.get("PUSH_MODE", "direct")
 
     # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
@@ -2418,7 +2424,21 @@ def print_usage():
 
 
 def main():
-    args = sys.argv[1:]
+    args = []
+    env_override = None
+    i = 0
+    raw_args = sys.argv[1:]
+    while i < len(raw_args):
+        a = raw_args[i]
+        if a == '--env' and i + 1 < len(raw_args):
+            env_override = raw_args[i + 1]
+            i += 2
+        elif a.startswith('--env='):
+            env_override = a.split('=', 1)[1]
+            i += 1
+        else:
+            args.append(a)
+            i += 1
 
     if len(args) == 0 or args[0] in ('-h', '--help', 'help'):
         print_usage()
@@ -2433,18 +2453,18 @@ def main():
         elif cmd == 'create':
             if len(args) < 2:
                 print("[ERROR] 请指定文件路径（支持 .html 和 .md）")
-                print("用法: python wechat_push.py create <文件路径> [--force-cover]")
+                print("用法: python wechat_push.py create <文件路径> [--force-cover] [--env dev|prod]")
                 print("       支持: .html (直接推送) 或 .md (自动转HTML后推送)")
                 sys.exit(1)
             html_path = args[1]
             remaining = args[2:]
             force_cover = '--force-cover' in remaining
-            draft_create(html_path, force_cover=force_cover)
+            draft_create(html_path, force_cover=force_cover, env_override=env_override)
 
         elif cmd == 'update':
             if len(args) < 2:
                 print("[ERROR] 请指定 media_id 和文件路径")
-                print("用法: python wechat_push.py update <media_id> <文件路径> [--force-cover]")
+                print("用法: python wechat_push.py update <media_id> <文件路径> [--force-cover] [--env dev|prod]")
                 print("       支持: .html (直接推送) 或 .md (自动转HTML后推送)")
                 sys.exit(1)
             media_id = args[1]
@@ -2458,7 +2478,7 @@ def main():
             if html_path is None:
                 print("[ERROR] 请指定 HTML文件路径")
                 sys.exit(1)
-            draft_update(media_id, html_path, force_cover=force_cover)
+            draft_update(media_id, html_path, force_cover=force_cover, env_override=env_override)
 
         elif cmd == 'delete':
             if len(args) < 2:

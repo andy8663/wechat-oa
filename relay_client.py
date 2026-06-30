@@ -98,6 +98,8 @@ def load_config():
         "PUSH_MODE": "direct",
         "WECHAT_OA_SERVER": "http://120.79.2.44",
         "WECHAT_OA_SERVER_KEY": "",
+        # ENV 默认不填 = prod
+        # prod → /api/   dev → /testapi/
     }
     if CONFIG_FILE.exists():
         try:
@@ -109,6 +111,20 @@ def load_config():
     return default_config
 
 
+def get_api_prefix(env: str = "") -> str:
+    """
+    根据 ENV 配置返回 API 前缀。
+    不配置或 prod → /api/
+    dev → /testapi/
+    """
+    if not env:
+        cfg = load_config()
+        env = cfg.get("ENV", "prod")
+    if env == "dev":
+        return "/testapi"
+    return "/api"
+
+
 def _get_cfg_params(api_key: str, relay_server: str) -> tuple:
     """统一读取配置参数"""
     cfg = load_config()
@@ -116,7 +132,8 @@ def _get_cfg_params(api_key: str, relay_server: str) -> tuple:
         api_key = cfg.get("WECHAT_OA_SERVER_KEY", "")
     if not relay_server:
         relay_server = cfg.get("WECHAT_OA_SERVER", "http://120.79.2.44")
-    return api_key, relay_server.rstrip('/'), cfg
+    api_prefix = get_api_prefix(cfg.get("ENV", ""))
+    return api_key, relay_server.rstrip('/'), cfg, api_prefix
 
 
 def _post(url: str, payload: dict, api_key: str, timeout: int = 30) -> dict:
@@ -256,11 +273,11 @@ def get_push_info(api_key: str = "", relay_server: str = "") -> dict:
             ...
         }
     """
-    api_key, relay_server, _ = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, _, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
-    url = f"{relay_server}/api/push/article/info"
+    url = f"{relay_server}{api_prefix}/push/article/info"
     return _get(url, {}, api_key)
 
 
@@ -290,7 +307,7 @@ def create_push_order(title: str = "", content: str = "", author: str = "", dige
             ...
         }
     """
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -316,7 +333,7 @@ def create_push_order(title: str = "", content: str = "", author: str = "", dige
         except Exception as e:
             print(f"[WARN] 封面图读取失败，将继续无封面创建订单: {e}")
 
-    url = f"{relay_server}/api/push/article/order"
+    url = f"{relay_server}{api_prefix}/push/article/order"
     result = _post(url, payload, api_key)
     
     # 统一包装返回格式：服务端成功返回时添加 success 标记
@@ -350,7 +367,7 @@ def execute_push_article(title: str, content: str, order_id: str,
     Returns:
         dict: {"success": True/False, "media_id": "...", "message": "..."}
     """
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -379,7 +396,7 @@ def execute_push_article(title: str, content: str, order_id: str,
         except Exception as e:
             print(f"[WARN] 封面图读取失败，将继续无封面推送: {e}")
 
-    url = f"{relay_server}/api/push/article"
+    url = f"{relay_server}{api_prefix}/push/article"
     result = _post(url, payload, api_key)
 
     if result.get("success"):
@@ -549,7 +566,7 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
     import subprocess
     import time
 
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -580,7 +597,7 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
         except Exception as e:
             print(f"[WARN] 封面图读取失败，将继续无封面推送: {e}")
 
-    url = f"{relay_server}/api/push/article"
+    url = f"{relay_server}{api_prefix}/push/article"
     result = _post(url, payload, api_key)
 
     # 标准 HTTP 402：需要支付
@@ -645,13 +662,13 @@ def finish_push(trade_no: str, payload: dict, api_key: str = "", relay_server: s
     """
     import subprocess
 
-    api_key, relay_server, _ = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, _, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
     if not trade_no:
         return {"success": False, "error": "trade_no 不能为空"}
 
-    resource_url = f"{relay_server}/api/push/article"
+    resource_url = f"{relay_server}{api_prefix}/push/article"
     data = json.dumps(payload)
 
     # 调用 alipay-bot 查询支付状态并自动重试（携带 Payment-Proof）
@@ -724,7 +741,7 @@ def list_drafts(count: int = 10, offset: int = 0, api_key: str = "", relay_serve
     Returns:
         dict: {"success": True/False, "drafts": [...], "total": N}
     """
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -736,7 +753,7 @@ def list_drafts(count: int = 10, offset: int = 0, api_key: str = "", relay_serve
         "payment_proof": payment_proof,
     }
 
-    url = f"{relay_server}/api/push/drafts"
+    url = f"{relay_server}{api_prefix}/push/drafts"
     result = _get(url, params, api_key)
 
     if result.get("status_code") == 402:
@@ -769,7 +786,7 @@ def update_draft(media_id: str, title: str, content: str, author: str = "", dige
     Returns:
         dict: {"success": True/False, "message": "..."}
     """
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -801,7 +818,7 @@ def update_draft(media_id: str, title: str, content: str, author: str = "", dige
     elif thumb_media_id:
         payload["thumb_media_id"] = thumb_media_id
 
-    url = f"{relay_server}/api/push/article/{media_id}"
+    url = f"{relay_server}{api_prefix}/push/article/{media_id}"
     result = _put(url, payload, api_key, timeout=30)
 
     if result.get("success"):
@@ -826,7 +843,7 @@ def delete_draft(media_id: str, api_key: str = "", relay_server: str = "") -> di
     Returns:
         dict: {"success": True/False, "message": "..."}
     """
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -836,7 +853,7 @@ def delete_draft(media_id: str, api_key: str = "", relay_server: str = "") -> di
     }
 
     headers = {"X-API-Key": api_key}
-    url = f"{relay_server}/api/push/article/{media_id}"
+    url = f"{relay_server}{api_prefix}/push/article/{media_id}"
 
     try:
         resp = requests.delete(url, headers=headers, params=params, timeout=15)
@@ -876,13 +893,13 @@ def retry_list_drafts(trade_no: str, count: int = 10, offset: int = 0,
     import subprocess
     import json
 
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
     if not trade_no:
         return {"success": False, "error": "trade_no 不能为空"}
 
-    resource_url = f"{relay_server}/api/push/drafts"
+    resource_url = f"{relay_server}{api_prefix}/push/drafts"
     params = {
         "appid": cfg.get("APP_ID", ""),
         "appsecret": cfg.get("APP_SECRET", ""),
@@ -943,13 +960,13 @@ def retry_get_material_count(trade_no: str, api_key: str = "", relay_server: str
     import subprocess
     import json
 
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
     if not trade_no:
         return {"success": False, "error": "trade_no 不能为空"}
 
-    resource_url = f"{relay_server}/api/material/count"
+    resource_url = f"{relay_server}{api_prefix}/material/count"
     params = {
         "appid": cfg.get("APP_ID", ""),
         "appsecret": cfg.get("APP_SECRET", ""),
@@ -1006,7 +1023,7 @@ def search_drafts(keyword: str, count: int = 20, offset: int = 0,
     Returns:
         dict: {"success": True/False, "drafts": [...], "total": N}
     """
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -1018,7 +1035,7 @@ def search_drafts(keyword: str, count: int = 20, offset: int = 0,
         "offset": offset,
     }
 
-    url = f"{relay_server}/api/push/drafts"
+    url = f"{relay_server}{api_prefix}/push/drafts"
     return _get(url, params, api_key, timeout=15)
 
 
@@ -1040,7 +1057,7 @@ def upload_material(file_path: str, material_type: str = "image",
     Returns:
         dict: {"success": True/False, "media_id": "...", "url": "..."}
     """
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -1062,7 +1079,7 @@ def upload_material(file_path: str, material_type: str = "image",
         "file_data": base64.b64encode(file_data).decode('utf-8'),
     }
 
-    url = f"{relay_server}/api/material/upload"
+    url = f"{relay_server}{api_prefix}/material/upload"
     result = _post(url, payload, api_key, timeout=60)
 
     if result.get("success"):
@@ -1091,7 +1108,7 @@ def get_material_count(api_key: str = "", relay_server: str = "", payment_proof:
     Returns:
         dict: {"success": True/False, "voice_count": N, "video_count": N, ...}
     """
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -1101,7 +1118,7 @@ def get_material_count(api_key: str = "", relay_server: str = "", payment_proof:
         "payment_proof": payment_proof,
     }
 
-    url = f"{relay_server}/api/material/count"
+    url = f"{relay_server}{api_prefix}/material/count"
     result = _get(url, params, api_key, timeout=15)
 
     if result.get("status_code") == 402:
@@ -1130,7 +1147,7 @@ def list_materials(material_type: str = "image", count: int = 20, offset: int = 
     Returns:
         dict: {"success": True/False, "items": [...], "total": N}
     """
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -1144,7 +1161,7 @@ def list_materials(material_type: str = "image", count: int = 20, offset: int = 
     # 注意：服务器端的 list_materials() 不支持 keyword 参数
     # 如果需要关键词过滤，在客户端侧进行
 
-    url = f"{relay_server}/api/materials"
+    url = f"{relay_server}{api_prefix}/materials"
     result = _get(url, params, api_key, timeout=15)
     
     # 客户端侧关键词过滤
@@ -1182,7 +1199,7 @@ def delete_material(media_id: str, api_key: str = "", relay_server: str = "") ->
     Returns:
         dict: {"success": True/False, "message": "..."}
     """
-    api_key, relay_server, cfg = _get_cfg_params(api_key, relay_server)
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
@@ -1192,7 +1209,7 @@ def delete_material(media_id: str, api_key: str = "", relay_server: str = "") ->
     }
 
     headers = {"X-API-Key": api_key}
-    url = f"{relay_server}/api/material/{media_id}"
+    url = f"{relay_server}{api_prefix}/material/{media_id}"
 
     try:
         resp = requests.delete(url, headers=headers, params=params, timeout=15)
