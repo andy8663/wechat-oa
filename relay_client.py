@@ -404,6 +404,39 @@ def _extract_trade_no(output: str) -> str:
     return ""
 
 
+def _clean_wechat_margins(html):
+    """
+    WeChat 渲染器不折叠相邻元素的边距，导致所有 margin 都会变成可见空白。
+    
+    此函数从所有块级元素的内联样式中移除 margin 相关属性，
+    行距统一用 line-height 控制。
+    """
+    block_tags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div', 'section']
+
+    def clean_style(match):
+        tag = match.group(1)
+        attrs = match.group(2) or ''
+
+        if tag.lower() not in block_tags:
+            return match.group(0)
+
+        def remove_margin(style_val):
+            style_val = re.sub(r';?\s*margin\s*:[^;]+', '', style_val)
+            style_val = re.sub(r';?\s*margin-[a-z]+\s*:[^;]+', '', style_val)
+            style_val = style_val.strip().strip(';')
+            return style_val
+
+        attrs = re.sub(
+            r'style="([^"]*)"',
+            lambda m: f'style="{remove_margin(m.group(1))}"',
+            attrs
+        )
+
+        return f'<{tag}{attrs}>'
+
+    return re.sub(r'<(p|h[1-6]|div|section)(\s+[^>]*)?>', clean_style, html)
+
+
 def _inline_css(html):
     """
     简单的 CSS 内联转换（无外部依赖）。
@@ -525,6 +558,7 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
     # CSS 内联：把 <style> 标签的样式内联到元素的 style 属性中
     # 这样微信 API 过滤掉 <style> 标签后，内联样式仍然生效
     content = _inline_css(content)
+    content = _clean_wechat_margins(content)
 
     # 构建请求体
     payload = {
@@ -743,6 +777,7 @@ def update_draft(media_id: str, title: str, content: str, author: str = "", dige
 
     # CSS 内联：把 <style> 标签的样式内联到元素的 style 属性中
     content = _inline_css(content)
+    content = _clean_wechat_margins(content)
 
     # 构建请求体
     payload = {
