@@ -676,7 +676,7 @@ def parse_md_article(md_path):
 
     # ── 6. 组装 style（遵循 design.md） ─────────────────────────────────────
     style_content = """
-.design-container { width: 677px; max-width: 100%; margin: 0 auto; box-sizing: border-box; }
+.design-container { width: 100%; box-sizing: border-box; }
 .content-container { padding: 0; margin: 0; }
 h1 { font-size: clamp(18px, 2vw, 20px); font-weight: bold; text-align: center; margin: 20px 0 14px; }
 h2 { font-size: clamp(17px, 1.8vw, 18px); font-weight: bold; margin: 18px 0 12px; }
@@ -1271,11 +1271,15 @@ def _draft_create_relay(html_path, cfg):
     else:
         print(f"[COVER] 使用已缓存的封面图: {thumb_path}")
 
+    # 提取并截断摘要（避免服务端 fallback 提取后超长导致 45004 错误）
+    digest = _extract_digest(body)
+    digest = _truncate_digest(digest)
+
     result = _relay_push(
         title=title,
         content=content,
         author=cfg.get("author", "Woody"),
-        digest=None,  # 未传入时由服务端 fallback 提取
+        digest=digest,
         thumb_path=thumb_path,
     )
     if result.get("success"):
@@ -1426,12 +1430,16 @@ def _draft_update_relay(media_id, html_path, force_cover=False):
     except Exception as e:
         print(f"[WARN] 封面图生成失败: {e}")
 
+    # 提取并截断摘要（与 create 路径保持一致，避免 relay 服务端提取超长 description）
+    _digest = _extract_digest(body)
+    _digest = _truncate_digest(_digest)
+
     result = _relay_update(
         media_id=media_id,
         title=title,
         content=content,
         author=load_config().get("author", "Woody"),
-        digest="",
+        digest=_digest,
         thumb_path=thumb_path,
     )
     if result.get("success"):
