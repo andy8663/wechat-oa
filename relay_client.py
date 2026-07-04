@@ -1229,6 +1229,52 @@ def delete_material(media_id: str, api_key: str = "", relay_server: str = "") ->
 # CLI 入口（供命令行直接调用测试）
 # ════════════════════════════════════════════════════════════════════════════
 
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 获取单篇草稿详情（通过中转服务器）
+# ═════════════════════════════════════════════════════════════════════════════
+
+def get_draft(media_id: str, api_key: str = "", relay_server: str = "") -> dict:
+    """
+    获取单篇草稿详情（通过中转服务器）
+
+    Args:
+        media_id: 草稿 media_id
+        api_key: WECHAT_OA_SERVER_KEY
+        relay_server: 中转服务器地址
+
+    Returns:
+        dict: {"success": True/False, "news_item": [...], "error": "..."}
+    """
+    api_key, relay_server, cfg, api_prefix = _get_cfg_params(api_key, relay_server)
+    if not api_key:
+        return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
+
+    params = {
+        "appid": cfg.get("APP_ID", ""),
+        "appsecret": cfg.get("APP_SECRET", ""),
+    }
+
+    payload = {"media_id": media_id}
+
+    headers = {"X-API-Key": api_key, "Content-Type": "application/json; charset=utf-8"}
+    url = f"{relay_server}{api_prefix}/push/article/get"
+
+    try:
+        resp = requests.post(url, json=payload, headers=headers, params=params, timeout=15)
+        resp.raise_for_status()
+        result = resp.json()
+        if result.get("errcode") == 0:
+            return {"success": True, "news_item": result.get("news_item", [])}
+        else:
+            return {"success": False, "error": result.get("errmsg", "获取草稿详情失败")}
+    except requests.exceptions.RequestException as e:
+        return {"success": False, "error": f"网络请求失败: {e}"}
+    except json.JSONDecodeError:
+        return {"success": False, "error": f"服务器返回非 JSON 数据: {resp.text[:200]}"}
+
+
 if __name__ == "__main__":
     import argparse
 

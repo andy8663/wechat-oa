@@ -284,6 +284,7 @@ python wechat_push.py quaiwei "这款产品值得注意的是，综上所述，�
 |------|------|---------|
 | `list` | 查看草稿列表（含标题+时间） | `draft/batchget` |
 | `find <关键词>` | 按标题关键词搜索草稿 | `draft/batchget` |
+| `get <media_id> [--save]` | 获取单篇草稿详情（--save 保存 HTML） | `draft/get` |
 | `create <文件> [--env dev\|prod]` | 创建新草稿（支持 .html 和 .md） | `draft/add` |
 | `update <media_id> <文件> [--env dev\|prod]` | 更新已有草稿 | `draft/update` |
 | `update <media_id> <文件> --force-cover` | 更新草稿并强制重新生成封面 | `draft/update` |
