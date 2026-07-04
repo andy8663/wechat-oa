@@ -1848,6 +1848,39 @@ def draft_get(media_id, save_html=False):
     return _draft_get_direct(media_id, save_html)
 
 
+def _fix_garbled(text):
+    """修复微信 API 返回内容的乱码（支持 UTF-8/Latin-1/GBK 混合编码）"""
+    if not isinstance(text, str):
+        return text
+    
+    # 检查是否包含 ASCII 范围外的字符
+    has_non_ascii = any(ord(c) >= 128 for c in text)
+    if not has_non_ascii:
+        return text
+    
+    # 方法1：尝试 Latin-1 → UTF-8（UTF-8 字节被当作 Latin-1）
+    try:
+        fixed = text.encode('latin-1').decode('utf-8')
+        # 验证结果：检查是否包含有效 UTF-8 中文字符
+        if any('一' <= c <= '鿿' for c in fixed):
+            return fixed
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        pass
+    
+    # 方法2：尝试 GBK 解码（返回的可能是 GBK 编码）
+    try:
+        # 先把字符串转回字节（Latin-1）
+        b = text.encode('latin-1')
+        fixed = b.decode('gbk', errors='ignore')
+        # 验证：检查是否包含有效中文
+        if any('一' <= c <= '鿿' for c in fixed):
+            return fixed
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        pass
+    
+    return text
+
+
 def _draft_get_direct(media_id, save_html=False):
     """direct 模式获取单篇草稿详情"""
     access_token = get_access_token()
@@ -1884,11 +1917,12 @@ def _draft_get_direct(media_id, save_html=False):
     print(f"  预览链接: {result['url']}")
     print(f"  正文长度: {len(result['content'])} 字符")
 
-    # 保存 HTML 到本地
+    # 保存 HTML 到本地（修复双重编码）
     if save_html:
+        fixed_content = _fix_garbled(result["content"])
         filename = f"draft_{media_id}.html"
         with open(filename, "w", encoding="utf-8") as f:
-            f.write(result["content"])
+            f.write(fixed_content)
         print(f"  HTML 已保存到: {filename}")
 
     return result
@@ -1919,9 +1953,10 @@ def _draft_get_relay(media_id, save_html=False):
         print(f"  正文长度: {len(output['content'])} 字符")
 
         if save_html:
+            fixed_content = _fix_garbled(output["content"])
             filename = f"draft_{media_id}.html"
             with open(filename, "w", encoding="utf-8") as f:
-                f.write(output["content"])
+                f.write(fixed_content)
             print(f"  HTML 已保存到: {filename}")
 
         return output

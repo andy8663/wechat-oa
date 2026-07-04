@@ -1251,21 +1251,22 @@ def get_draft(media_id: str, api_key: str = "", relay_server: str = "") -> dict:
     if not api_key:
         return {"success": False, "error": "未配置 WECHAT_OA_SERVER_KEY"}
 
-    params = {
+    # appid/appsecret 在 body 中（服务端 GetDraftRequest 需要）
+    payload = {
         "appid": cfg.get("APP_ID", ""),
         "appsecret": cfg.get("APP_SECRET", ""),
+        "media_id": media_id
     }
-
-    payload = {"media_id": media_id}
 
     headers = {"X-API-Key": api_key, "Content-Type": "application/json; charset=utf-8"}
     url = f"{relay_server}{api_prefix}/push/article/get"
 
     try:
-        resp = requests.post(url, json=payload, headers=headers, params=params, timeout=15)
+        resp = requests.post(url, json=payload, headers=headers, timeout=15)
         resp.raise_for_status()
         result = resp.json()
-        if result.get("errcode") == 0:
+        # 服务端成功时返回 {"news_item": [...]}，错误时返回 {"errcode": xxx, "errmsg": "..."}
+        if "news_item" in result:
             return {"success": True, "news_item": result.get("news_item", [])}
         else:
             return {"success": False, "error": result.get("errmsg", "获取草稿详情失败")}
