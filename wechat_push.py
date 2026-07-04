@@ -1813,6 +1813,157 @@ def draft_find(keyword):
     return _draft_find_direct(keyword)
 
 
+
+
+def draft_get(media_id, save_html=False):
+    """
+    获取单篇草稿详情
+
+    Args:
+        media_id: 草稿 media_id
+        save_html: 是否保存 HTML 内容到本地文件
+
+    Returns:
+        dict: 草稿详情（title, author, digest, content, thumb_media_id, url）
+    """
+    cfg = load_config()
+    push_mode = cfg.get("PUSH_MODE", "direct")
+
+    # ── hybrid 模式：先尝试 direct，IP 白名单失败则自动切换 relay ──
+    if push_mode == "hybrid":
+        try:
+            return _draft_get_direct(media_id, save_html)
+        except Exception as e:
+            if _is_ip_whitelist_error(e):
+                print(f"[HYBRID] Direct 模式因 IP 白名单限制失败，自动切换到 relay 模式...")
+                return _draft_get_relay(media_id, save_html)
+            else:
+                raise
+
+    # ── relay 模式 ──
+    if push_mode == "relay":
+        return _draft_get_relay(media_id, save_html)
+
+    # ── direct 模式（默认）────────────────────────────────────
+    return _draft_get_direct(media_id, save_html)
+
+
+def _fix_garbled(text):
+    """修复微信 API 返回内容的乱码（支持 UTF-8/Latin-1/GBK 混合编码）"""
+    if not isinstance(text, str):
+        return text
+    
+    # 检查是否包含 ASCII 范围外的字符
+    has_non_ascii = any(ord(c) >= 128 for c in text)
+    if not has_non_ascii:
+        return text
+    
+    # 方法1：尝试 Latin-1 → UTF-8（UTF-8 字节被当作 Latin-1）
+    try:
+        fixed = text.encode('latin-1').decode('utf-8')
+        # 验证结果：检查是否包含有效 UTF-8 中文字符
+        if any('一' <= c <= '鿿' for c in fixed):
+            return fixed
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        pass
+    
+    # 方法2：尝试 GBK 解码（返回的可能是 GBK 编码）
+    try:
+        # 先把字符串转回字节（Latin-1）
+        b = text.encode('latin-1')
+        fixed = b.decode('gbk', errors='ignore')
+        # 验证：检查是否包含有效中文
+        if any('一' <= c <= '鿿' for c in fixed):
+            return fixed
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        pass
+    
+    return text
+
+
+def _draft_get_direct(media_id, save_html=False):
+    """direct 模式获取单篇草稿详情"""
+    access_token = get_access_token()
+    url = f"{API_DRAFT_GET}?access_token={access_token}"
+
+    json_data = json.dumps({"media_id": media_id}, ensure_ascii=False).encode("utf-8")
+    resp = requests.post(url, data=json_data, headers={"Content-Type": "application/json; charset=utf-8"}, timeout=30)
+    data = resp.json()
+
+    errcode = data.get("errcode", 0)
+    if errcode != 0:
+        raise Exception(f"获取草稿详情失败: {data}")
+
+    items = data.get("news_item", [])
+    if not items:
+        raise Exception("草稿内容为空")
+
+    item = items[0]
+    result = {
+        "title": item.get("title", ""),
+        "author": item.get("author", ""),
+        "digest": item.get("digest", ""),
+        "content": item.get("content", ""),
+        "thumb_media_id": item.get("thumb_media_id", ""),
+        "url": item.get("url", ""),
+    }
+
+    # 打印详情
+    print(f"\n[草稿详情] media_id: {media_id}")
+    print(f"  标题: {result['title']}")
+    print(f"  作者: {result['author']}")
+    print(f"  摘要: {result['digest']}")
+    print(f"  封面 media_id: {result['thumb_media_id']}")
+    print(f"  预览链接: {result['url']}")
+    print(f"  正文长度: {len(result['content'])} 字符")
+
+    # 保存 HTML 到本地（修复双重编码）
+    if save_html:
+        fixed_content = _fix_garbled(result["content"])
+        filename = f"draft_{media_id}.html"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(fixed_content)
+        print(f"  HTML 已保存到: {filename}")
+
+    return result
+
+
+def _draft_get_relay(media_id, save_html=False):
+    """relay 模式获取单篇草稿详情"""
+    from relay_client import get_draft as _relay_get
+    result = _relay_get(media_id=media_id)
+
+    if result.get("success"):
+        item = result.get("news_item", [{}])[0]
+        output = {
+            "title": item.get("title", ""),
+            "author": item.get("author", ""),
+            "digest": item.get("digest", ""),
+            "content": item.get("content", ""),
+            "thumb_media_id": item.get("thumb_media_id", ""),
+            "url": item.get("url", ""),
+        }
+
+        print(f"\n[草稿详情] media_id: {media_id} (relay 模式)")
+        print(f"  标题: {output['title']}")
+        print(f"  作者: {output['author']}")
+        print(f"  摘要: {output['digest']}")
+        print(f"  封面 media_id: {output['thumb_media_id']}")
+        print(f"  预览链接: {output['url']}")
+        print(f"  正文长度: {len(output['content'])} 字符")
+
+        if save_html:
+            fixed_content = _fix_garbled(output["content"])
+            filename = f"draft_{media_id}.html"
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(fixed_content)
+            print(f"  HTML 已保存到: {filename}")
+
+        return output
+    else:
+        raise Exception(f"relay 获取草稿详情失败: {result.get('error', '未知错误')}")
+
+
 def _draft_find_direct(keyword):
     """direct 模式按标题关键词搜索草稿"""
     access_token = get_access_token()
@@ -2501,6 +2652,16 @@ def main():
                 print("用法: python wechat_push.py find <关键词>")
                 sys.exit(1)
             draft_find(args[1])
+
+        elif cmd == 'get':
+            if len(args) < 2:
+                print("[ERROR] 请指定 media_id")
+                print("用法: python wechat_push.py get <media_id> [--save]")
+                print("  --save: 保存 HTML 内容到本地文件")
+                sys.exit(1)
+            media_id = args[1]
+            save_html = '--save' in args
+            draft_get(media_id, save_html=save_html)
 
         elif cmd == 'batch-del':
             if len(args) < 2:
