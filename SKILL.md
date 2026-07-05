@@ -4,12 +4,12 @@ displayName: 微信公众号草稿箱管理工具
 summary: 微信公众号草稿箱管理工具集，支持创建/更新/删除草稿、上传素材、生成封面图，基于官方API。
 license: MIT
 name: wechat-oa
-description: WeChat Official Account draft management toolkit. Trigger words: 看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/生成封面图/上传图片. Official API.
-description_zh: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/搜草稿/搜索草稿/按关键词找草稿/按标题搜/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/批量删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/已发布文章列表/公众号素材列表/素材管理/删除素材/交互式删除/批量删除素材/关键词过滤素材/摘要生成/生成文章摘要。官方API。
+description: WeChat Official Account draft management toolkit. Trigger words: 看看草稿箱/查看草稿/草稿列表/公众号草稿/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/生成封面图/上传图片. Official API.
+description_zh: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/公众号素材列表/素材管理/删除素材/摘要生成/生成文章摘要。官方API。
 version: "3.0.0"
 author: Woody
 email: andy8663@126.com
-wechat_mp: 用技术定义未来
+wechat_mp: 技术定义未来
 homepage: https://github.com/andy8663/wechat-oa
 metadata:
   openclaw:
@@ -37,31 +37,9 @@ WeChat Official Account draft management toolkit. Built on official WeChat APIs.
 
 ## ⚠️ 使用前必读 / MUST READ BEFORE USE
 
-**创建或更新公众号文章前，AI 必须先阅读以下两个文档：**
+**创建或更新公众号文章前，AI 必须先阅读 `design.md` 排版规范。**
 
-Before creating or updating any WeChat article, AI MUST read these two documents first:
-
-### 1. `WECHAT_STYLING.md`（微信渲染兼容规范）
-
-> **为什么需要这个文档？** wechat-oa 的推送管道会删除所有块级元素的 `margin` 属性，导致段落间距消失。本文档提供解决方案。
-
-Why this document? wechat-oa's push pipeline removes all `margin` attributes from block elements, causing paragraph spacing to disappear. This document provides solutions.
-
-**核心规则 / Key rules:**
-- 段落间距用 `<br>` 实体换行，不用 CSS `margin`/`padding`
-- h2：17px、居中、`#2563eb`、前面加 `<br>`
-- h3：15px、`#b91c1c`（与蓝色互补）
-- `<br>` 只插在顶级块之间，不插在列表/blockquote/提示框内
-- CSS 禁止重复属性（后面的覆盖前面的）
-- footer：`#999` 灰色、居中、前面加 `<br>`
-
-📖 **完整规范见 `WECHAT_STYLING.md`**
-
-### 2. `design.md`（整体排版风格）
-
-> 定义公众号文章的整体视觉风格。
-
-Defines the overall visual style of WeChat articles.
+Before creating or updating any WeChat article, AI MUST read `design.md` layout specification first.
 
 **涵盖内容 / Covers:**
 - 容器宽度（文章 677px / 图文卡片 375px）
@@ -289,11 +267,11 @@ HTML/MD 文件
 
 ### Q1：为什么我的文章段落之间没间距？
 
-A：微信渲染器会删除所有 `margin`。解决方法：用 `<br>` 代替，详见 `WECHAT_STYLING.md`。
+A：微信渲染器会删除所有 `margin`。解决方法：用 `<br>` 代替，详见 `design.md`。
 
 ### Q2：为什么标题颜色没生效？
 
-A：可能 CSS 里 `color` 属性出现了两次，后面的覆盖前面的。检查 `WECHAT_STYLING.md` 的"常见问题"章节。
+A：可能 CSS 里 `color` 属性出现了两次，后面的覆盖前面的。检查 `design.md` 的 CSS 限制章节。
 
 ### Q3：推送时提示 IP 不在白名单？
 
@@ -303,7 +281,7 @@ A：按照"安装与配置 → IP 白名单配置"章节，将对应 IP 加入�
 
 ## 💡 特性 / Features
 
-- **公众号排版规范** / WeChat MP layout specification：内置 `design.md` 和 `WECHAT_STYLING.md` 排版规范，AI 生成 HTML 时必须遵循
+- **公众号排版规范** / WeChat MP layout specification：内置 `design.md` 排版规范，AI 生成 HTML 时必须遵循
 - **行内样式转换** / Inline-style conversion：自动将 HTML 中的 `<style>` 标签转换为行内 `style=""` 属性，兼容微信文章渲染
 - **自动封面生成** / Auto cover generation：根据文章标题生成科技风封面图（2.35:1 比例）
 - **正文图片自动上传** / Auto inline image upload：自动提取 HTML/MD 中的本地图片，上传到微信素材库并替换 URL
@@ -313,8 +291,7 @@ A：按照"安装与配置 → IP 白名单配置"章节，将对应 IP 加入�
 
 ## 📝 输出文件 / Output Files
 
-- `draft_ids.txt` - 草稿记录（创建时间、标题、media_id）
-- 封面图默认保存在项目根目录
+- 封面图默认保存在 `.cache/cover.png`
 
 ---
 
@@ -330,6 +307,5 @@ A：按照"安装与配置 → IP 白名单配置"章节，将对应 IP 加入�
 
 ## 📖 相关文档 / Related Documents
 
-- **`WECHAT_STYLING.md`** - 微信渲染兼容规范（必读）
-- **`design.md`** - 整体排版风格规范（必读）
+- **`design.md`** - 排版风格规范（必读）
 - **`README.md`** - 项目介绍与安装指南
