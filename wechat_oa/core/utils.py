@@ -76,6 +76,8 @@ def validate_digest(digest: str, max_units: int = 120) -> Tuple[str, bool]:
 def extract_digest(html_content: str, max_units: int = 120) -> str:
     content = re.sub(r'<style[^>]*>.*?</style>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
     content = re.sub(r'<script[^>]*>.*?</script>', '', content, flags=re.DOTALL | re.IGNORECASE)
+    # Replace block-level closing tags with newline to preserve text separation
+    content = re.sub(r'</(?:p|div|section|h[1-6]|li|tr|blockquote|pre|ul|ol)[^>]*>', '\n', content, flags=re.IGNORECASE)
     content = re.sub(r'<[^>]+>', '', content)
     content = re.sub(r'&[a-zA-Z]+;', ' ', content)
     content = re.sub(r'\s{2,}', '\n', content)
@@ -95,8 +97,8 @@ def extract_digest(html_content: str, max_units: int = 120) -> str:
     if candidates:
         result = candidates[0]
         for line in candidates[1:]:
-            if count_wechat_units(result + line) <= max_units * 0.8:
-                result += line
+            if count_wechat_units(result + ' ' + line) <= max_units:
+                result += ' ' + line
             else:
                 break
     else:
