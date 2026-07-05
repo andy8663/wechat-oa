@@ -44,6 +44,14 @@ try:
 except ImportError:
     HAS_PREMAILER = False
 
+# mistune：Markdown 解析器（支持表格插件）
+try:
+    import mistune
+    from mistune.plugins import table as table_mod
+    HAS_MISTUNE = True
+except ImportError:
+    HAS_MISTUNE = False
+
 # 配置 - 从 config.json 读取
 CONFIG_FILE = Path(__file__).parent / "config.json"
 
@@ -496,223 +504,127 @@ def parse_html_article(html_path):
     return title.strip(), body.strip(), style_content.strip()
 
 
+def _get_wechat_style_css():
+    """获取 wechat-oa 内置的微信排版 CSS（绝对路径）"""
+    return Path(__file__).parent / "wechat_style.css"
+
+
+def _pack_for_premailer(body_html, css_path=None):
+    """用 wechat_style.css 包裹 body，生成完整 HTML 供 premailer 处理"""
+    if css_path is None:
+        css_path = _get_wechat_style_css()
+    css_abs = str(css_path.resolve())
+    return (
+        '<!DOCTYPE html>\n'
+        '<html lang="zh-cn">\n'
+        '<head>\n'
+        f'<link rel="stylesheet" type="text/css" href="{css_abs}">\n'
+        '</head>\n'
+        '<body>\n'
+        + body_html + '\n'
+        '</body>\n'
+        '</html>'
+    )
+
+
 def parse_md_article(md_path):
     """
-    解析 Markdown 文件，转换为带内联样式的 HTML。
+    解析 Markdown 文件，转换为带内联样式的 HTML（wxprint 管线）。
 
-    支持的 Markdown 元素：
-      # / ## / ###       标题（h1 / h2 / h3）
-      **bold** / *italic* / `code`  行内格式
-      > blockquote         引用块
-      ---                  分隔线
-      - / * 无序列表       ul/li
-      1. 有序列表          ol/li
-      [text](url)          链接
-      ![alt](url)          图片（已脱敏，不生成 img 标签）
+    管线：mistune（表格插件）→ premailer CSS 内联 → 清理标签 → 插 <br> 分隔。
 
-    样式严格遵循 design.md 规范：clamp() 响应式字号、677px 容器宽度。
+    样式遵循 WECHAT_STYLING.md 规范：
+      正文 15px / H2 17px 蓝色居中 / H3 16px 红色 / 段落间距用 <br>（非 CSS margin）。
+
     返回：(title, body, style_content)
     """
+    if not HAS_MISTUNE:
+        raise ImportError(
+            "mistune 未安装，请运行：pip install mistune"
+        )
+
     with open(md_path, 'r', encoding='utf-8', errors='ignore') as f:
         md = f.read()
 
-    # ── 1. 提取标题 ──────────────────────────────────────────────────────────
+    # ── 1. 提取标题（从 MD 原文第一个 # 标题行） ─────────────────────────
     title = "无标题"
     for m in re.finditer(r'^(#{1,3})\s+(.+)$', md, re.MULTILINE):
         raw = m.group(2).strip()
-        raw = re.sub(r'\*\*(.+?)\*\*', r'\1', raw)  # 去掉粗体标记
-        raw = re.sub(r'\*(.+?)\*', r'\1', raw)        # 去掉斜体标记
-        raw = re.sub(r'`(.+?)`', r'\1', raw)          # 去掉代码标记
+        raw = re.sub(r'\*\*(.+?)\*\*', r'\1', raw)
+        raw = re.sub(r'\*(.+?)\*', r'\1', raw)
+        raw = re.sub(r'`(.+?)`', r'\1', raw)
         if raw:
             title = raw
             break
-
     if len(title) > 64:
         title = title[:64]
 
-    # ── 2. 预处理：代码块保护 ────────────────────────────────────────────────
-    # 用占位符保护 fenced code block 内容，防止转换逻辑误伤
-    code_blocks = []
-    def protect_code(m):
-        placeholder = f'\x00CODEBLOCK{len(code_blocks)}\x00'
-        code_blocks.append(m.group(0))
-        return placeholder
+    # ── 2. mistune Markdown → HTML ─────────────────────────────────────────
+    md_parser = mistune.create_markdown(plugins=[table_mod.table])
+    body_html = md_parser(md)
 
-    md = re.sub(r'```[\s\S]*?```', protect_code, md)       # fenced code block
-    md = re.sub(r'`([^`]+)`', protect_code, md)             # inline code
+    # ── 3. premailer CSS 内联 ──────────────────────────────────────────────
+    if HAS_PREMAILER:
+        full_html = _pack_for_premailer(body_html)
+        body_html = Premailer(
+            full_html,
+            remove_classes=False,
+            strip_important=False,
+            include_star_selectors=False,
+            disable_link_rewrites=True,
+            allow_loading_external_files=True,
+        ).transform()
 
-    # ── 3. 预处理：表格行保护 ────────────────────────────────────────────────
-    table_rows = []
-    def protect_table(m):
-        placeholder = f'\x00TABLEROW{len(table_rows)}\x00'
-        table_rows.append(m.group(0))
-        return placeholder
+    # ── 4. 清理 HTML 结构 ──────────────────────────────────────────────────
+    body_html = re.sub(
+        r'<!DOCTYPE[^>]*>\s*<html[^>]*>.*?<head>.*?</head>',
+        '', body_html, flags=re.DOTALL
+    )
+    body_html = re.sub(r'<html[^>]*>\s*', '', body_html)
+    body_html = re.sub(r'\s*</html>', '', body_html)
+    body_html = re.sub(r'<title>.*?</title>', '', body_html, flags=re.DOTALL)
+    body_html = re.sub(r'<meta[^>]+>', '', body_html)
+    body_html = re.sub(r'<style[^>]*>.*?</style>', '', body_html, flags=re.DOTALL)
+    # thead → tbody, th → td（微信兼容性）
+    body_html = re.sub(r'<thead>(.*?)</thead>', r'<tbody>\1</tbody>', body_html, flags=re.DOTALL)
+    body_html = re.sub(r'<th([^>]*)>', r'<td\1>', body_html)
+    body_html = re.sub(r'</th>', '</td>', body_html)
+    body_html = body_html.strip()
 
-    md = re.sub(r'\|.+\|(\n\|[|:\- ]+\|)?', protect_table, md)
+    # ── 5. 段落间插 <br>（补偿被 css_to_inline 清除的 margin） ───────────
+    body_html = _insert_block_spacing(body_html)
 
-    # ── 4. 转行：块级元素 ───────────────────────────────────────────────────
-    lines = md.split('\n')
-    html_lines = []
-    in_ul = False
-    in_ol = False
-
-    def _close_ul():
-        nonlocal in_ul
-        if in_ul:
-            html_lines.append('</ul>')
-            in_ul = False
-
-    def _close_ol():
-        nonlocal in_ol
-        if in_ol:
-            html_lines.append('</ol>')
-            in_ol = False
-
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        stripped = line.strip()
-
-        # 空行
-        if not stripped:
-            _close_ul()
-            _close_ol()
-            i += 1
-            continue
-
-        # 分隔线
-        if re.match(r'^(-{3,}|\*{3,}|_{3,})$', stripped):
-            _close_ul()
-            _close_ol()
-            html_lines.append('<hr>')
-            i += 1
-            continue
-
-        # 标题
-        hm = re.match(r'^(#{1,3})\s+(.+)$', stripped)
-        if hm:
-            _close_ul()
-            _close_ol()
-            level = len(hm.group(1))
-            inner = hm.group(2)
-            inner = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', inner)
-            inner = re.sub(r'\*(.+?)\*', r'<em>\1</em>', inner)
-            inner = re.sub(r'`([^`]+)`', r'<code>\1</code>', inner)
-            html_lines.append(f'<h{level}>{inner}</h{level}>')
-            i += 1
-            continue
-
-        # 无序列表项（- 或 * 开头）
-        li_m = re.match(r'^([-*+])\s+(.+)$', stripped)
-        if li_m:
-            if not in_ul:
-                _close_ol()
-                html_lines.append('<ul>')
-                in_ul = True
-            item = li_m.group(2)
-            item = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', item)
-            item = re.sub(r'\*(.+?)\*', r'<em>\1</em>', item)
-            item = re.sub(r'`([^`]+)`', r'<code>\1</code>', item)
-            html_lines.append(f'<li>{item}</li>')
-            i += 1
-            continue
-
-        # 有序列表项（1. 开头）
-        ol_m = re.match(r'^\d+\.\s+(.+)$', stripped)
-        if ol_m:
-            if not in_ol:
-                _close_ul()
-                html_lines.append('<ol>')
-                in_ol = True
-            item = ol_m.group(1)
-            item = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', item)
-            item = re.sub(r'\*(.+?)\*', r'<em>\1</em>', item)
-            item = re.sub(r'`([^`]+)`', r'<code>\1</code>', item)
-            html_lines.append(f'<li>{item}</li>')
-            i += 1
-            continue
-
-        # 引用块
-        if stripped.startswith('>'):
-            _close_ul()
-            _close_ol()
-            quote_content = stripped.lstrip('>').strip()
-            quote_content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', quote_content)
-            quote_content = re.sub(r'\*(.+?)\*', r'<em>\1</em>', quote_content)
-            quote_content = re.sub(r'`([^`]+)`', r'<code>\1</code>', quote_content)
-            html_lines.append(f'<blockquote><p>{quote_content}</p></blockquote>')
-            i += 1
-            continue
-
-        # 普通段落
-        _close_ul()
-        _close_ol()
-        para = stripped
-        para = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', para)
-        para = re.sub(r'\*(.+?)\*', r'<em>\1</em>', para)
-        para = re.sub(r'`([^`]+)`', r'<code>\1</code>', para)
-        para = re.sub(r'\[([^\]]+)\]\(([^\)]+)\)', r'<a href="\2">\1</a>', para)
-        # ★ 修改：保留 MD 图片语法，让 extract_and_upload_images 处理
-        # 原: para = re.sub(r'!\[([^\]]*)\]\(([^\)]+)\)', '', para)  # 去掉图片 markdown
-        # 现改为保留图片路径，供后续上传处理
-        para = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', r'<img alt="\1" src="\2" style="max-width:100%;">', para)
-        html_lines.append(f'<p>{para}</p>')
-
-        i += 1
-
-    # 关闭未关闭的列表
-    _close_ul()
-    _close_ol()
-
-    body = '\n'.join(html_lines)
-
-    # ── 5. 恢复保护的内容 ───────────────────────────────────────────────────
-    for idx, block in enumerate(code_blocks):
-        body = body.replace(f'\x00CODEBLOCK{idx}\x00', block)
-
-    for idx, row in enumerate(table_rows):
-        # 简单表格还原为 HTML table
-        body = body.replace(f'\x00TABLEROW{idx}\x00', _render_table_row(row))
-
-    # ── 6. 组装 style（遵循 design.md） ─────────────────────────────────────
-    style_content = """
-.design-container { width: 100%; box-sizing: border-box; }
-.content-container { padding: 0; margin: 0; }
-h1 { font-size: clamp(18px, 2vw, 20px); font-weight: bold; text-align: center; margin: 20px 0 14px; }
-h2 { font-size: clamp(17px, 1.8vw, 18px); font-weight: bold; margin: 18px 0 12px; }
-h3 { font-size: clamp(15px, 1.6vw, 16px); font-weight: bold; margin: 14px 0 10px; }
-p  { font-size: clamp(15px, 1.4vw, 16px); line-height: 1.8; margin: 8px 0; }
-strong { font-weight: bold; }
-em { font-style: italic; }
-code { background-color: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; font-size: 0.9em; }
-blockquote { border-left: 4px solid #3498db; background-color: #f0f7ff; padding: 10px 16px; margin: 10px 0; }
-blockquote p { color: #555; margin: 0; font-size: clamp(14px, 1.3vw, 15px); }
-ul, ol { padding-left: 24px; margin: 8px 0; }
-li { font-size: clamp(15px, 1.4vw, 16px); line-height: 1.8; margin: 4px 0; }
-a { color: #3498db; text-decoration: none; }
-hr { border: none; border-top: 1px solid #e0e0e0; margin: 20px 0; }
-table { width: 100%; border-collapse: collapse; font-size: clamp(13px, 1.1vw, 14px); margin: 10px 0; }
-th { background-color: #d6eaf8; padding: 8px; text-align: left; }
-td { padding: 8px; border-bottom: 1px solid #eee; }
-""".strip()
-
-    return title.strip(), body.strip(), style_content
+    # ── 6. 返回（style_content 固定为空，管线已处理样式） ─────────────────
+    return title.strip(), body_html, ""
 
 
-def _render_table_row(md_row):
-    """将 Markdown 表格行（含分隔行）转为 HTML <table>"""
-    cells = [c.strip() for c in md_row.strip('|').split('|')]
-    if not cells:
-        return ''
+def _insert_block_spacing(html):
+    """
+    在块级元素之间插入单个 <br> 分隔符。
 
-    # 判断是否为分隔行（只含 - : |）
-    if all(re.match(r'^[:\- ]+$', c) for c in cells):
-        return ''
+    作用：补偿 css_to_inline() / _clean_wechat_margins() 清除的 CSS margin。
+    规范：块之间（</p> 后 / </h2> 后等）插一个 <br>，列表/引用框内部不插。
+    """
+    BR = '<br>'
 
-    is_header = not any(re.match(r'^[:\- ]+$', c) for c in cells)
-    tag = 'th' if is_header else 'td'
-    cols = ''.join(f'<{tag}>{c}</{tag}>' for c in cells)
-    return f'<tr>{cols}</tr>'
+    # 在顶级块之间插 <br>：</p>→</p><br>，</h[1-6]>→</h...><br>
+    # 但不在列表/引用内部插（li/blockquote 之间的 p 不用管）
+    html = re.sub(r'(</p>)\s*(<p)', r'\1' + BR + r'\2', html)
+    html = re.sub(r'(</h[123456]?>)\s*(<p|<h[123456]>|<ul|<ol|<table|<blockquote)',
+                  r'\1' + BR + r'\2', html)
+    html = re.sub(r'(</blockquote>)\s*(<p|<h[123456]>|<ul|<ol|<table|<blockquote)',
+                  r'\1' + BR + r'\2', html)
+    html = re.sub(r'(</table>)\s*(<p|<h[123456]>|<ul|<ol|<table|<blockquote)',
+                  r'\1' + BR + r'\2', html)
+    html = re.sub(r'(</ul>)\s*(<p|<h[123456]>|<ul|<ol|<table|<blockquote)',
+                  r'\1' + BR + r'\2', html)
+    html = re.sub(r'(</ol>)\s*(<p|<h[123456]>|<ul|<ol|<table|<blockquote)',
+                  r'\1' + BR + r'\2', html)
+
+    # 清理连续 <br><br>（偶尔会多插一次）
+    html = re.sub(r'(<br>){2,}', BR, html)
+
+    return html
 
 
 def parse_file(file_path):

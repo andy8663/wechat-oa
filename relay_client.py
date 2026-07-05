@@ -421,6 +421,34 @@ def _extract_trade_no(output: str) -> str:
     return ""
 
 
+def _insert_block_spacing(html):
+    """
+    在块级元素之间插入单个 <br> 分隔符。
+
+    作用：补偿 _clean_wechat_margins() 清除的 CSS margin。
+    规范：块之间（</p> 后 / </h2> 后等）插一个 <br>，列表/引用框内部不插。
+    """
+    BR = '<br>'
+    html = re.sub(r'(</p>)\s*(<p)', r'\1' + BR + r'\2', html)
+    html = re.sub(
+        r'(</h[123456]?>)\s*(<p|<h[123456]>|<ul|<ol|<table|<blockquote)',
+        r'\1' + BR + r'\2', html)
+    html = re.sub(
+        r'(</blockquote>)\s*(<p|<h[123456]>|<ul|<ol|<table|<blockquote)',
+        r'\1' + BR + r'\2', html)
+    html = re.sub(
+        r'(</table>)\s*(<p|<h[123456]>|<ul|<ol|<table|<blockquote)',
+        r'\1' + BR + r'\2', html)
+    html = re.sub(
+        r'(</ul>)\s*(<p|<h[123456]>|<ul|<ol|<table|<blockquote)',
+        r'\1' + BR + r'\2', html)
+    html = re.sub(
+        r'(</ol>)\s*(<p|<h[123456]>|<ul|<ol|<table|<blockquote)',
+        r'\1' + BR + r'\2', html)
+    html = re.sub(r'(<br>){2,}', BR, html)
+    return html
+
+
 def _clean_wechat_margins(html):
     """
     WeChat 渲染器不折叠相邻元素的边距，导致所有 margin 都会变成可见空白。
@@ -576,6 +604,7 @@ def push_article(title: str, content: str, author: str = "", digest: str = "",
     # 这样微信 API 过滤掉 <style> 标签后，内联样式仍然生效
     content = _inline_css(content)
     content = _clean_wechat_margins(content)
+    content = _insert_block_spacing(content)
 
     # 构建请求体
     payload = {
@@ -795,6 +824,7 @@ def update_draft(media_id: str, title: str, content: str, author: str = "", dige
     # CSS 内联：把 <style> 标签的样式内联到元素的 style 属性中
     content = _inline_css(content)
     content = _clean_wechat_margins(content)
+    content = _insert_block_spacing(content)
 
     # 构建请求体
     payload = {
