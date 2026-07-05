@@ -8,4 +8,39 @@ TMP/
 
 # Test files and directories
 test/
+tests/*.md
+tests/*.jpg
+tests/*.html
 *.html
+
+# Python package metadata
+*.egg-info/
+
+# Cache directories
+.cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Editor directories
+.vscode/
+.idea/
+.project/
+.pydevproject/
+
+# Log files
+*.log
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.AppleDouble
+.LSOverride
+
+# Linux
+*~

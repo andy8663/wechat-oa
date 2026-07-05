@@ -198,7 +198,7 @@ hybrid 模式:
 
 请联系作者获取密钥：
 - GitHub Issues：[https://github.com/andy8663/wechat-oa](https://github.com/andy8663/wechat-oa)
-- 邮箱：`andy8663@163.com`
+- 邮箱：`andy8663@126.com`
 - 微信公众号：技术定义未来
 
 获取密钥后，在 `config.json` 中配置：
@@ -446,7 +446,7 @@ pip install requests Pillow fastapi uvicorn
 ## 问题反馈 Feedback
 
 - GitHub Issues：[https://github.com/andy8663/wechat-oa](https://github.com/andy8663/wechat-oa)
-- 邮箱：`andy8663@163.com`
+- 邮箱：`andy8663@126.com`
 - 微信公众号：技术定义未来
 
 ---
