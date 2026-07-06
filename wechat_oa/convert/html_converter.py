@@ -41,6 +41,8 @@ class HtmlToWechatConverter:
         with open(html_path, 'r', encoding='utf-8', errors='ignore') as f:
             html = f.read()
         
+        title = self._extract_title(html)
+        
         try:
             from premailer import Premailer
             p = Premailer(
@@ -107,8 +109,10 @@ class HtmlToWechatConverter:
         
         html = self._clean_list_empty_lines(html)
         
-        title = self._extract_title(html)
         body = self._extract_body(html)
+        
+        if not title or title == "无标题":
+            title = self._extract_title(html)
         
         return {
             "title": title,

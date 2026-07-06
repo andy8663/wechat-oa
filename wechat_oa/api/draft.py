@@ -61,9 +61,11 @@ def _draft_create_relay(title: str, content: str, author: str = "", digest: str 
     
     result = relay_post("push/article", json_data, cfg)
     
-    if result.get("success") or result.get("media_id"):
+    if result.get("errcode") == 0 or result.get("success") is True or result.get("media_id"):
         return {"success": True, "media_id": result.get("media_id"), "message": "草稿创建成功"}
-    return {"success": False, "error": result.get("error", str(result))}
+    if result.get("success") is False:
+        return {"success": False, "error": result.get("error", str(result))}
+    return {"success": False, "error": result.get("errmsg", str(result))}
 
 
 @hybrid_route(_draft_create_direct, _draft_create_relay)
@@ -96,27 +98,37 @@ def _draft_update_direct(media_id: str, title: str, content: str, author: str = 
 
 
 def _draft_update_relay(media_id: str, title: str, content: str, author: str = "", digest: str = "", thumb_media_id: str = "") -> Dict:
+    import base64
+    import os
     from wechat_oa.core.config import load_config
+    from wechat_oa.features.cover_generator import generate_cover
+    from .relay import relay_put
     cfg = load_config()
     
     json_data = {
         "appid": cfg["APP_ID"],
-        "secret": cfg["APP_SECRET"],
-        "action": "draft_update",
-        "data": {
-            "media_id": media_id,
-            "title": title,
-            "author": author,
-            "digest": digest,
-            "content": content,
-            "thumb_media_id": thumb_media_id
-        }
+        "appsecret": cfg["APP_SECRET"],
+        "title": title,
+        "author": author,
+        "digest": digest,
+        "content": content,
     }
     
-    result = relay_post("wechat/draft", json_data, cfg)
+    if thumb_media_id:
+        json_data["thumb_media_id"] = thumb_media_id
+    else:
+        cover_path = generate_cover(title)
+        if os.path.exists(cover_path):
+            with open(cover_path, 'rb') as f:
+                img_data = f.read()
+            json_data["thumb_image"] = base64.b64encode(img_data).decode('utf-8')
     
-    if result.get("success") or result.get("errcode") == 0:
+    result = relay_put(f"push/article/{media_id}", json_data, cfg)
+    
+    if result.get("errcode") == 0 or result.get("success") is True:
         return {"success": True, "message": "草稿更新成功"}
+    if result.get("success") is False:
+        return {"success": False, "error": result.get("error", str(result))}
     return {"success": False, "error": result.get("errmsg", str(result))}
 
 
@@ -179,14 +191,13 @@ def _draft_get_relay(media_id: str) -> Dict:
     
     json_data = {
         "appid": cfg["APP_ID"],
-        "secret": cfg["APP_SECRET"],
-        "action": "draft_get",
-        "data": {"media_id": media_id}
+        "appsecret": cfg["APP_SECRET"],
+        "media_id": media_id
     }
     
-    result = relay_post("wechat/draft", json_data, cfg)
+    result = relay_post("push/article/get", json_data, cfg)
     
-    if result.get("success") or result.get("errcode") == 0:
+    if result.get("success") or result.get("errcode") == 0 or result.get("news_item"):
         return {"success": True, "data": result}
     return {"success": False, "error": result.get("errmsg", str(result))}
 
@@ -220,8 +231,10 @@ def _draft_delete_relay(media_id: str) -> Dict:
     
     result = relay_delete(f"push/article/{media_id}", params, cfg)
     
-    if result.get("success") or result.get("errcode") == 0:
+    if result.get("errcode") == 0 or result.get("success") is True:
         return {"success": True, "message": "草稿删除成功"}
+    if result.get("success") is False:
+        return {"success": False, "error": result.get("error", str(result))}
     return {"success": False, "error": result.get("errmsg", str(result))}
 
 

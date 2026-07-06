@@ -84,6 +84,27 @@ def relay_upload(path: str, file_path: str, config: Dict) -> Dict:
         return {"success": False, "error": f"服务器返回非 JSON 数据: {resp.text[:200]}"}
 
 
+def relay_put(path: str, json_data: Dict, config: Dict) -> Dict:
+    server_url = config.get("WECHAT_OA_SERVER", "http://120.79.2.44")
+    key = config.get("WECHAT_OA_SERVER_KEY", "")
+    api_prefix = get_api_prefix(config.get("ENV", ""))
+    
+    url = f"{server_url.rstrip('/')}{api_prefix}/{path}"
+    
+    headers = {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-API-Key": key,
+    }
+    
+    data = json.dumps(json_data, ensure_ascii=False).encode("utf-8")
+    resp = requests.put(url, data=data, headers=headers, timeout=30)
+    
+    try:
+        return _fix_garbled(resp.json())
+    except json.JSONDecodeError:
+        return {"success": False, "error": f"服务器返回非 JSON 数据: {resp.text[:200]}"}
+
+
 def relay_delete(path: str, params: Dict, config: Dict) -> Dict:
     server_url = config.get("WECHAT_OA_SERVER", "http://120.79.2.44")
     key = config.get("WECHAT_OA_SERVER_KEY", "")
