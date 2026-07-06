@@ -96,7 +96,10 @@ def _draft_update_direct(media_id: str, title: str, content: str, author: str = 
 
 
 def _draft_update_relay(media_id: str, title: str, content: str, author: str = "", digest: str = "", thumb_media_id: str = "") -> Dict:
+    import base64
+    import os
     from wechat_oa.core.config import load_config
+    from wechat_oa.features.cover_generator import generate_cover
     from .relay import relay_put
     cfg = load_config()
     
@@ -107,8 +110,16 @@ def _draft_update_relay(media_id: str, title: str, content: str, author: str = "
         "author": author,
         "digest": digest,
         "content": content,
-        "thumb_media_id": thumb_media_id
     }
+    
+    if thumb_media_id:
+        json_data["thumb_media_id"] = thumb_media_id
+    else:
+        cover_path = generate_cover(title)
+        if os.path.exists(cover_path):
+            with open(cover_path, 'rb') as f:
+                img_data = f.read()
+            json_data["thumb_image"] = base64.b64encode(img_data).decode('utf-8')
     
     result = relay_put(f"push/article/{media_id}", json_data, cfg)
     
