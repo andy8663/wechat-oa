@@ -2,6 +2,7 @@ import click
 from wechat_oa.convert import get_converter
 from wechat_oa.api import draft_create, draft_update, draft_list, draft_get, draft_delete
 from wechat_oa.api import material_upload, material_count, material_list, material_delete
+from wechat_oa.api import get_accounts, select_account, get_current_account, set_default_account
 from wechat_oa.features import generate_cover
 from wechat_oa.core.utils import validate_digest
 
@@ -16,7 +17,8 @@ def cli():
 @click.option("--digest", default="", help="文章摘要")
 @click.option("--author", default="", help="作者名")
 @click.option("--force-cover", is_flag=True, help="强制生成封面")
-def create(file_path, digest, author, force_cover):
+@click.option("-a", "--account", default=None, help="公众号名称")
+def create(file_path, digest, author, force_cover, account):
     converter = get_converter(file_path)
     article = converter.convert(file_path, user_digest=digest)
     
@@ -42,7 +44,8 @@ def create(file_path, digest, author, force_cover):
         content=article["body"],
         author=author or article.get("author", ""),
         digest=final_digest,
-        thumb_media_id=thumb_media_id
+        thumb_media_id=thumb_media_id,
+        account_name=account
     )
     
     if result["success"]:
@@ -56,7 +59,8 @@ def create(file_path, digest, author, force_cover):
 @click.argument("file_path")
 @click.option("--digest", default="", help="文章摘要")
 @click.option("--author", default="", help="作者名")
-def update(media_id, file_path, digest, author):
+@click.option("-a", "--account", default=None, help="公众号名称")
+def update(media_id, file_path, digest, author, account):
     converter = get_converter(file_path)
     article = converter.convert(file_path, user_digest=digest)
     
@@ -71,7 +75,8 @@ def update(media_id, file_path, digest, author):
         title=article["title"],
         content=article["body"],
         author=author or article.get("author", ""),
-        digest=final_digest
+        digest=final_digest,
+        account_name=account
     )
     
     if result["success"]:
@@ -83,8 +88,9 @@ def update(media_id, file_path, digest, author):
 @cli.command()
 @click.option("--offset", default=0, help="偏移量")
 @click.option("--count", default=20, help="数量")
-def list(offset, count):
-    result = draft_list(offset=offset, count=count)
+@click.option("-a", "--account", default=None, help="公众号名称")
+def list(offset, count, account):
+    result = draft_list(offset=offset, count=count, account_name=account)
     
     if result["success"]:
         data = result.get("data", {})
@@ -103,8 +109,9 @@ def list(offset, count):
 
 @cli.command()
 @click.argument("media_id")
-def get(media_id):
-    result = draft_get(media_id=media_id)
+@click.option("-a", "--account", default=None, help="公众号名称")
+def get(media_id, account):
+    result = draft_get(media_id=media_id, account_name=account)
     
     if result["success"]:
         data = result.get("data", {})
@@ -118,8 +125,9 @@ def get(media_id):
 
 @cli.command()
 @click.argument("media_id")
-def delete(media_id):
-    result = draft_delete(media_id=media_id)
+@click.option("-a", "--account", default=None, help="公众号名称")
+def delete(media_id, account):
+    result = draft_delete(media_id=media_id, account_name=account)
     
     if result["success"]:
         click.echo(f"✅ 草稿删除成功")
@@ -191,3 +199,65 @@ def del_material(media_id):
 def cover(title, output):
     output_path = generate_cover(title, save_path=output)
     click.echo(f"✅ 封面图已生成: {output_path}")
+
+
+@cli.command()
+def accounts():
+    result = get_accounts()
+    
+    if result["success"]:
+        accounts_list = result.get("accounts", [])
+        
+        if not accounts_list:
+            click.echo("暂无公众号")
+            return
+        
+        click.echo("公众号列表:")
+        click.echo("-" * 50)
+        for acc in accounts_list:
+            flags = []
+            if acc.get("is_current"):
+                flags.append("当前")
+            if acc.get("is_default"):
+                flags.append("默认")
+            flag_str = f" [{', '.join(flags)}]" if flags else ""
+            click.echo(f"{acc.get('key', '')} | {acc.get('name', '')}{flag_str}")
+            if acc.get("voice_name"):
+                click.echo(f"   语音名称: {', '.join(acc['voice_name'])}")
+    else:
+        click.echo(f"❌ 获取失败: {result.get('error')}")
+
+
+@cli.command()
+@click.argument("account_name")
+def switch(account_name):
+    result = select_account(account_name)
+    
+    if result["success"]:
+        click.echo(f"✅ {result['message']}")
+    else:
+        click.echo(f"❌ {result.get('error')}")
+
+
+@cli.command()
+@click.argument("account_name")
+def set_default(account_name):
+    result = set_default_account(account_name)
+    
+    if result["success"]:
+        click.echo(f"✅ {result['message']}")
+    else:
+        click.echo(f"❌ {result.get('error')}")
+
+
+@cli.command()
+def current():
+    result = get_current_account()
+    
+    if result["success"]:
+        click.echo(f"当前公众号: {result.get('name', '')}")
+        click.echo(f"账号标识: {result.get('account_key', '')}")
+        click.echo(f"作者: {result.get('author', '')}")
+        click.echo(f"APP_ID: {result.get('APP_ID', '')}")
+    else:
+        click.echo(f"❌ {result.get('error')}")
