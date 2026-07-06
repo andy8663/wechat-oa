@@ -61,9 +61,11 @@ def _draft_create_relay(title: str, content: str, author: str = "", digest: str 
     
     result = relay_post("push/article", json_data, cfg)
     
-    if result.get("success") or result.get("media_id"):
+    if result.get("errcode") == 0 or result.get("success") is True:
         return {"success": True, "media_id": result.get("media_id"), "message": "草稿创建成功"}
-    return {"success": False, "error": result.get("error", str(result))}
+    if result.get("success") is False:
+        return {"success": False, "error": result.get("error", str(result))}
+    return {"success": False, "error": result.get("errmsg", str(result))}
 
 
 @hybrid_route(_draft_create_direct, _draft_create_relay)
@@ -123,8 +125,10 @@ def _draft_update_relay(media_id: str, title: str, content: str, author: str = "
     
     result = relay_put(f"push/article/{media_id}", json_data, cfg)
     
-    if result.get("success") or result.get("errcode") == 0:
+    if result.get("errcode") == 0 or result.get("success") is True:
         return {"success": True, "message": "草稿更新成功"}
+    if result.get("success") is False:
+        return {"success": False, "error": result.get("error", str(result))}
     return {"success": False, "error": result.get("errmsg", str(result))}
 
 
@@ -227,8 +231,10 @@ def _draft_delete_relay(media_id: str) -> Dict:
     
     result = relay_delete(f"push/article/{media_id}", params, cfg)
     
-    if result.get("success") or result.get("errcode") == 0:
+    if result.get("errcode") == 0 or result.get("success") is True:
         return {"success": True, "message": "草稿删除成功"}
+    if result.get("success") is False:
+        return {"success": False, "error": result.get("error", str(result))}
     return {"success": False, "error": result.get("errmsg", str(result))}
 
 
