@@ -1,5 +1,6 @@
 import json
 import time
+import hashlib
 import requests
 from pathlib import Path
 from typing import Optional, Tuple
@@ -12,7 +13,8 @@ class TokenManager:
         self.app_id = app_id
         self.app_secret = app_secret
         self.cache_dir = Path(__file__).parent.parent.parent / ".cache"
-        self.cache_file = self.cache_dir / "access_token.json"
+        app_id_hash = hashlib.md5(app_id.encode()).hexdigest()[:8]
+        self.cache_file = self.cache_dir / f"access_token_{app_id_hash}.json"
         self._token: Optional[str] = None
         self._expires_at: float = 0
     
