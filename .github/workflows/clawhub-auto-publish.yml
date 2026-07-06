@@ -23,8 +23,6 @@ jobs:
       - name: Publish to ClawHub
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
-          HTTP_PROXY: http://127.0.0.1:7897
-          HTTPS_PROXY: http://127.0.0.1:7897
         run: |
           clawhub login --token ${CLAWHUB_TOKEN} --no-browser
           clawhub sync --root ./ --all --bump major --changelog "Bump to 3.0.0 - 支持多公众号管理"
