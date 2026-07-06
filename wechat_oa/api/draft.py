@@ -97,23 +97,20 @@ def _draft_update_direct(media_id: str, title: str, content: str, author: str = 
 
 def _draft_update_relay(media_id: str, title: str, content: str, author: str = "", digest: str = "", thumb_media_id: str = "") -> Dict:
     from wechat_oa.core.config import load_config
+    from .relay import relay_put
     cfg = load_config()
     
     json_data = {
         "appid": cfg["APP_ID"],
-        "secret": cfg["APP_SECRET"],
-        "action": "draft_update",
-        "data": {
-            "media_id": media_id,
-            "title": title,
-            "author": author,
-            "digest": digest,
-            "content": content,
-            "thumb_media_id": thumb_media_id
-        }
+        "appsecret": cfg["APP_SECRET"],
+        "title": title,
+        "author": author,
+        "digest": digest,
+        "content": content,
+        "thumb_media_id": thumb_media_id
     }
     
-    result = relay_post("wechat/draft", json_data, cfg)
+    result = relay_put(f"push/article/{media_id}", json_data, cfg)
     
     if result.get("success") or result.get("errcode") == 0:
         return {"success": True, "message": "草稿更新成功"}
@@ -179,14 +176,13 @@ def _draft_get_relay(media_id: str) -> Dict:
     
     json_data = {
         "appid": cfg["APP_ID"],
-        "secret": cfg["APP_SECRET"],
-        "action": "draft_get",
-        "data": {"media_id": media_id}
+        "appsecret": cfg["APP_SECRET"],
+        "media_id": media_id
     }
     
-    result = relay_post("wechat/draft", json_data, cfg)
+    result = relay_post("push/article/get", json_data, cfg)
     
-    if result.get("success") or result.get("errcode") == 0:
+    if result.get("success") or result.get("errcode") == 0 or result.get("news_item"):
         return {"success": True, "data": result}
     return {"success": False, "error": result.get("errmsg", str(result))}
 

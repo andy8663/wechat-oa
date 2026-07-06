@@ -8,9 +8,7 @@ TMP/
 
 # Test files and directories
 test/
-tests/*.md
-tests/*.jpg
-tests/*.html
+tests/
 *.html
 
 # Python package metadata

@@ -14,12 +14,41 @@ def generate_cover(title: str, save_path: str = "", font_path: str = "") -> str:
     if font_path:
         font_file = font_path
     else:
-        font_paths = [
+        platform_fonts = {
+            "darwin": [
+                "/Library/Fonts/msyh.ttf",
+                "/Library/Fonts/SimHei.ttf",
+                "/Library/Fonts/Simsun.ttc",
+                "/Library/Fonts/Arial Unicode.ttf",
+                "/System/Library/Fonts/HelveticaNeue.ttc",
+            ],
+            "win32": [
+                "C:/Windows/Fonts/msyh.ttc",
+                "C:/Windows/Fonts/simhei.ttf",
+                "C:/Windows/Fonts/simsun.ttc",
+                "C:/Windows/Fonts/msyhbd.ttc",
+            ],
+            "linux": [
+                "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            ],
+        }
+        
+        current_platform = sys.platform
+        font_paths = platform_fonts.get(current_platform, [])
+        
+        font_paths += [
+            "/Library/Fonts/msyh.ttf",
+            "/Library/Fonts/SimHei.ttf",
+            "/Library/Fonts/Simsun.ttc",
+            "/Library/Fonts/Arial Unicode.ttf",
             "C:/Windows/Fonts/msyh.ttc",
             "C:/Windows/Fonts/simhei.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/Library/Fonts/Microsoft YaHei.ttc",
         ]
+        
         font_file = None
         for fp in font_paths:
             if os.path.exists(fp):
