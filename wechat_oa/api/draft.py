@@ -61,7 +61,7 @@ def _draft_create_relay(title: str, content: str, author: str = "", digest: str 
     
     result = relay_post("push/article", json_data, cfg)
     
-    if result.get("errcode") == 0 or result.get("success") is True:
+    if result.get("errcode") == 0 or result.get("success") is True or result.get("media_id"):
         return {"success": True, "media_id": result.get("media_id"), "message": "草稿创建成功"}
     if result.get("success") is False:
         return {"success": False, "error": result.get("error", str(result))}
