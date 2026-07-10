@@ -6,7 +6,7 @@ license: MIT
 name: wechat-oa
 description: WeChat Official Account draft management toolkit. Trigger words: 看看草稿箱/查看草稿/草稿列表/公众号草稿/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/生成封面图/上传图片. Official API.
 description_zh: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/公众号素材列表/素材管理/删除素材/摘要生成/生成文章摘要。官方API。
-version: "3.0.0"
+version: "3.0.1"
 author: Woody
 email: andy8663@126.com
 wechat_mp: 技术定义未来
@@ -113,6 +113,8 @@ wechat-oa create article.md --digest "这是文章摘要"
 ### 配置文件 / Config File
 
 将 `config.example.json` 复制为 `config.json`，填入你的凭证：
+
+> ⚠️ **注意**：`config.json` 必须使用标准 JSON 格式，**不要保留 `//` 注释**，否则会导致解析错误。
 
 ```json
 {

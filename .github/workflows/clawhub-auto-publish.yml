@@ -25,4 +25,13 @@ jobs:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
         run: |
           clawhub login --token ${CLAWHUB_TOKEN} --no-browser
-          clawhub sync --root ./ --all --bump major --changelog "Bump to 3.0.0 - 支持多公众号管理"
+
+          # 2. 同步技能--bump patch  自动升级版本号（不用你手动改）
+          # patch → 小版本 1.0.1 → 1.0.2（推荐）
+          # minor → 中版本 1.0.0 → 1.1.0
+          #clawhub sync --root ./ --all --bump minor --changelog "Auto update from GitHub"
+          # major → 大版本 1.0.0 → 2.0.0
+          #clawhub sync --root ./ --all --bump major --changelog "Bump to 2.0.0"
+
+          # 2. 自动升级小版本号（第三位）
+          clawhub sync --root ./ --all --bump patch --changelog "Auto update from GitHub"
