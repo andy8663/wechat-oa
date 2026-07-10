@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wechat-oa"
-version = "3.0.0"
+version = "3.0.1"
 description = "微信公众号草稿箱管理工具 - 面向AI Agent的Skill"
 requires-python = ">=3.8"
 keywords = ["wechat", "official-account", "draft", "agent", "skill"]
