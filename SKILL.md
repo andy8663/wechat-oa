@@ -6,7 +6,7 @@ license: MIT
 name: wechat-oa
 description: WeChat Official Account draft management toolkit. Trigger words: 看看草稿箱/查看草稿/草稿列表/公众号草稿/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/生成封面图/上传图片. Official API.
 description_zh: 微信公众号草稿箱管理工具集。触发词（满足任一即触发）：看看草稿箱/查看草稿/草稿列表/公众号草稿/创建草稿/新建草稿/发文章到公众号/推送文章/更新草稿/删除草稿/生成封面图/上传图片到公众号/上传图片到素材库/公众号素材列表/素材管理/删除素材/摘要生成/生成文章摘要。官方API。
-version: "3.0.1"
+version: "3.0.3"
 author: Woody
 email: andy8663@126.com
 wechat_mp: 技术定义未来
@@ -136,7 +136,7 @@ wechat-oa create article.md --digest "这是文章摘要"
 | `hybrid` | 优先直连，失败自动切换中转 | **推荐** — 兼顾速度与稳定性 |
 
 > 🔑 **如何获取 WECHAT_OA_SERVER_KEY？**  
-> 发送邮件到 `andy8663@126.com` 申请中转服务器 API Key。
+> 访问同协云平台订购月卡获取卡密：[https://saas.synergyinfo.tech/products/wechat-oa](https://saas.synergyinfo.tech/products/wechat-oa)
 
 > ⚠️ `config.json` 包含凭证，**不要提交到 GitHub**！已在 `.gitignore` 中忽略。
 

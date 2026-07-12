@@ -188,10 +188,8 @@ hybrid 模式:
 
 使用 `relay` 或 `hybrid` 模式需要配置 `WECHAT_OA_SERVER_KEY`。
 
-请联系作者获取密钥：
-- GitHub Issues：[https://github.com/andy8663/wechat-oa](https://github.com/andy8663/wechat-oa)
-- 邮箱：`andy8663@126.com`
-- 微信公众号：技术定义未来
+请访问同协云平台订购月卡获取卡密：
+- 订购地址：[https://saas.synergyinfo.tech/products/wechat-oa](https://saas.synergyinfo.tech/products/wechat-oa)
 
 获取密钥后，在 `config.json` 中配置：
 
