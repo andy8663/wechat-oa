@@ -118,12 +118,21 @@ wechat-oa create article.md --digest "这是文章摘要"
 
 ```json
 {
-  "APP_ID": "wx0000000000000000",
-  "APP_SECRET": "00000000000000000000000000000000",
-  "author": "龙虾",
+  "default_account": "main",
+  "current_account": "main",
   "PUSH_MODE": "hybrid",
-  "WECHAT_OA_SERVER": "http://120.79.2.44",
-  "WECHAT_OA_SERVER_KEY": ""
+  "WECHAT_OA_SERVER": "https://synergyinfo.tech",
+  "WECHAT_OA_SERVER_KEY": "",
+  "ENV": "prod",
+  "accounts": {
+    "main": {
+      "name": "主公众号",
+      "author": "你的名字",
+      "voice_name": ["主号", "主公众号"],
+      "APP_ID": "wx0000000000000000",
+      "APP_SECRET": "00000000000000000000000000000000"
+    }
+  }
 }
 ```
 
